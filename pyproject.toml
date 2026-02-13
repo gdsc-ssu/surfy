@@ -1,0 +1,14 @@
+[project]
+name = "surfy"
+version = "0.1.0"
+description = "LangGraph-based browser automation agent"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=1.0.8",
+    "langchain-core>=0.3",
+    "langchain-anthropic>=0.3",
+    "playwright>=1.58.0",
+    "pydantic>=2.7",
+    "beautifulsoup4>=4.12",
+    "Pillow>=10.0",
+]
