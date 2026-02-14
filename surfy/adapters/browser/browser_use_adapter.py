@@ -59,7 +59,7 @@ class BrowserUseAdapter(BrowserPort):
                         params={"expression": "window.scrollBy(0, -500)"}
                     )
                 case ActionType.SEND_KEYS:
-                    assert action.value is not None, "SEND_KEYS에는 value(키 이름)가 필요합니다"
+                    assert action.value is not None
                     await self._send_key(action.value)
                 case ActionType.GO_BACK:
                     await self._go_back()
