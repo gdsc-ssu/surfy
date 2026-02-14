@@ -1,0 +1,57 @@
+name: Task
+description: Sprint 태스크 이슈
+labels: []
+body:
+  - type: textarea
+    id: background
+    attributes:
+      label: 배경
+      description: 왜 이 작업이 필요한가
+    validations:
+      required: true
+
+  - type: textarea
+    id: todo
+    attributes:
+      label: 할 일
+      description: 구체적 구현 내용
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: 대상 파일
+      description: 생성/수정할 파일 경로 (체크리스트)
+      placeholder: |
+        - [ ] `surfy/example.py`
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      description: 검증 가능한 체크리스트
+      value: |
+        - [ ] `make check` 통과 (ruff lint + pyright typecheck)
+        - [ ] CI 통과
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: 참고
+      description: 관련 문서, 코드, 패턴
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 의존성
+      description: 선행 issue 번호
+      placeholder: "#1"
+    validations:
+      required: false
