@@ -1,6 +1,7 @@
 import asyncio
-import sys
 import logging
+import sys
+
 from surfy.graph import compile_graph
 
 

@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+
 from surfy.domain.models.screen import PageState
 
 
