@@ -28,11 +28,13 @@ class BrowserUseAdapter(BrowserPort):
     def _create_action(self, data: dict[str, Any]) -> Any:
         """registry의 ActionModel로 래핑하여 반환"""
         if self._action_model is None:
-            self._action_model = self._ensure_controller().registry.create_action_model()
+            self._action_model =(
+                self._ensure_controller().registry.create_action_model()
+            ) 
         return self._action_model.model_validate(data)
 
     async def connect(self, cdp_url: str) -> None:
-        self._session = BrowserSession(cdp_url=cdp_url, is_local=False)
+        self._session = BrowserSession(cdp_url=cdp_url, is_local=False)  # type: ignore[call-overload]
         await self._session.start()
         self._controller = Controller()
 
@@ -61,7 +63,14 @@ class BrowserUseAdapter(BrowserPort):
                     )
                 case ActionType.TYPE:
                     await controller.act(
-                        self._create_action({"input": {"index": action.target_id, "text": action.value or ""}}),
+                        self._create_action(
+                            {
+                                "input": {
+                                    "index": action.target_id, 
+                                    "text": action.value or ""
+                                }
+                            }
+                        ),
                         session,
                     )
                 case ActionType.SCROLL_DOWN:
