@@ -19,4 +19,6 @@ build/
 .DS_Store
 
 # Claude
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/skills/
