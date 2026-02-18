@@ -1,0 +1,19 @@
+{
+  "enabledPlugins": {
+    "github@claude-plugins-official": true
+  },
+  "plansDirectory": "./docs",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "make fix"
+          }
+        ]
+      }
+    ]
+  }
+}
