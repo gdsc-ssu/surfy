@@ -19,5 +19,6 @@ jobs:
           python-version: "3.11"
 
       - run: uv sync --dev
+      - run: uv pip install -e .
 
       - run: make check
