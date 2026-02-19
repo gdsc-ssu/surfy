@@ -9,6 +9,8 @@ class ActionType(str, Enum):
     SCROLL_DOWN = "SCROLL_DOWN"
     SCROLL_UP = "SCROLL_UP"
     GO_TO_URL = "GO_TO_URL"
+    SEND_KEYS = "SEND_KEYS"
+    GO_BACK = "GO_BACK"
     DONE = "DONE"
     STUCK = "STUCK"
 
