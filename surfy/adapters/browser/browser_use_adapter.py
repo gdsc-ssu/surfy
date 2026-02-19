@@ -71,12 +71,29 @@ class BrowserUseAdapter(BrowserPort):
                         return StepResult(success=False, message="Value is required for TYPE")
                     await element.fill(action.value)
                 case ActionType.SCROLL_DOWN:
-                    await page.evaluate("window.scrollBy(0, 500)")
+                    await page.evaluate("(...args) => { window.scrollBy(0, 500); }")
                 case ActionType.SCROLL_UP:
-                    await page.evaluate("window.scrollBy(0, -500)")
+                    await page.evaluate("(...args) => { window.scrollBy(0, 500); }")
                 case ActionType.SEND_KEYS:
                     if action.value:
-                        await page.keyboard.press(action.value)
+                        element = self._resolve_element(target_id=action.target_id)
+                        if action.value.lower() == "enter": # Enter 키는 fill("\n")로 처리
+                            await element.fill("\n")
+                        elif len(action.value) == 1:  # 일반 문자
+                            await element.fill(action.value)
+                        else:  # Tab, Escape, 화살표키 등
+                            js = f"""
+                            (...args) => {{
+                                const e = new KeyboardEvent('keydown', {{
+                                    key: '{action.value}',
+                                    code: '{action.value}',
+                                    bubbles: true
+                                }});
+                                document.activeElement.dispatchEvent(e);
+                            }}
+                            """
+                            page = await self._session.get_current_page()
+                            await page.evaluate(js)
                 case ActionType.GO_BACK:
                     await page.go_back()
 
