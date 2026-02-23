@@ -20,7 +20,10 @@ cd surfy
 # 2. 의존성 설치
 uv sync
 
-# 3. 환경 변수 설정
+# 3. 로컬 패키지 editable 설치
+uv pip install -e .
+
+# 4. 환경 변수 설정
 cp .env.example .env
 # .env 파일에 ANTHROPIC_API_KEY 입력
 ```
