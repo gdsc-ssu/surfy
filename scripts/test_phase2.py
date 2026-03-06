@@ -59,28 +59,29 @@ async def main():
     try:
         container = Container()
 
-        # 1. Chrome CDP 연결
-        browser = await container.browser()
+        # Resource provider를 통한 browser 초기화
+        browser = await container.browser.init()  # type: ignore[misc]
 
         try:
-            # 2. Anthropic API 연결 (via DI)
-            llm = container.llm()
+            # Actor 생성 (DI container가 browser, llm 자동 주입)
+            actor = container.actor_service()
 
-            # 3. Actor 생성
-            actor = container.actor_service(browser=browser, llm=llm)
-
-            # 4. Task 정의 및 실행
+            # 3. Task 정의 및 실행
             task = Task(
-                description="코레일(korail.com)에 접속해서 내일 광명역에서 계룡역으로 가는 가장 빠른 기차편을 검색해주세요. 출발역: 광명, 도착역: 계룡, 날짜: 내일"
+                description=(
+                    "코레일(korail.com)에 접속해서 내일 광명역에서 계룡역으로 가는 "
+                    "가장 빠른 기차편을 검색해주세요. 출발역: 광명, 도착역: 계룡, 날짜: 내일"
+                )
             )
             result = await actor.execute_task(task, max_steps=20)
 
-            # 5. 결과 확인
+            # 4. 결과 확인
             page_state = await browser.get_page_state()
             print(f"Final URL: {page_state.url}")
             print(f"Result: {result}")
         finally:
-            await browser.close()
+            # Resource 정리 (browser.close() 자동 호출)
+            await container.browser.shutdown()  # type: ignore[misc]
     finally:
         if chrome_process:
             logger.info("Terminating Chrome...")
