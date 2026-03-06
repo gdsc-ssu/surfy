@@ -7,6 +7,7 @@
 
 import platform
 import shutil
+import socket
 import subprocess
 import tempfile
 import time
@@ -14,7 +15,15 @@ import time
 import pytest
 import pytest_asyncio
 
-from surfy.domain.models import ActionType, ActorOutput, PageState, StepResult, Task
+from surfy.domain.models import (
+    ActionType,
+    ActorOutput,
+    BrowserAction,
+    HistoryEntry,
+    PageState,
+    StepResult,
+    Task,
+)
 from surfy.domain.ports import BrowserPort, LLMPort
 from surfy.domain.services import ActorService
 
@@ -37,14 +46,14 @@ class MockBrowser(BrowserPort):
             screenshot=None,
         )
 
-    async def execute_action(self, action):
+    async def execute_action(self, action: BrowserAction) -> StepResult:
         self.actions_executed.append(action.action_type.value)
         return StepResult(success=True, message=f"Executed {action.action_type.value}")
 
     async def check_text_visible(self, text: str) -> bool:
         return True
 
-    async def close(self):
+    async def close(self) -> None:
         pass
 
 
@@ -55,7 +64,12 @@ class MockLLM(LLMPort):
         self._actions = actions
         self._index = 0
 
-    async def decide_action(self, task, page_state, history) -> ActorOutput:
+    async def decide_action(
+        self,
+        task: Task,
+        page_state: PageState,
+        history: list[HistoryEntry],
+    ) -> ActorOutput:
         if self._index >= len(self._actions):
             return ActorOutput(thinking="Done", action_type=ActionType.DONE)
         action = self._actions[self._index]
@@ -79,26 +93,27 @@ async def test_mock_react_loop_completes_on_done():
     result = await actor.execute_task(Task(description="Test task"), max_steps=10)
 
     assert result.success
-    assert browser.actions_executed == ["CLICK", "TYPE", "DONE"]
+    # DONE은 execute_action을 호출하지 않음 (종료 조건으로 바로 반환)
+    assert browser.actions_executed == ["CLICK", "TYPE"]
 
 
 @pytest.mark.asyncio
 async def test_mock_react_loop_respects_max_steps():
     """max_steps 초과 시 루프가 종료되는지 확인."""
     browser = MockBrowser()
-    llm = MockLLM(
-        [ActorOutput(thinking="Keep clicking", action_type=ActionType.CLICK, target_id=1)] * 100
-    )
+    llm = MockLLM([ActorOutput(thinking="Keep clicking", action_type=ActionType.CLICK, target_id=1)] * 100)
     actor = ActorService(browser=browser, llm=llm)
 
-    await actor.execute_task(Task(description="Infinite task"), max_steps=5)
+    result = await actor.execute_task(Task(description="Infinite task"), max_steps=5)
 
+    assert not result.success
+    assert "Max steps" in result.message
     assert len(browser.actions_executed) == 5
 
 
 @pytest.mark.asyncio
 async def test_mock_react_loop_stops_on_stuck():
-    """STUCK 액션 반환 시 루프가 종료되는지 확인."""
+    """STUCK 액션 반환 시 루프가 종료되고 실패로 표시되는지 확인."""
     browser = MockBrowser()
     llm = MockLLM(
         [
@@ -110,8 +125,38 @@ async def test_mock_react_loop_stops_on_stuck():
 
     result = await actor.execute_task(Task(description="Stuck task"), max_steps=10)
 
+    # STUCK은 실패 상태
+    assert not result.success
+    assert "stuck" in result.message.lower()
+    # STUCK은 execute_action을 호출하지 않음 (종료 조건으로 바로 반환)
+    assert browser.actions_executed == ["CLICK"]
+
+
+@pytest.mark.asyncio
+async def test_mock_react_loop_with_action_failure():
+    """액션 실행 실패 시에도 루프가 계속 진행하는지 확인."""
+
+    class FailingBrowser(MockBrowser):
+        async def execute_action(self, action: BrowserAction) -> StepResult:
+            self.actions_executed.append(action.action_type.value)
+            if len(self.actions_executed) == 1:
+                return StepResult(success=False, message="Action failed")
+            return StepResult(success=True, message=f"Executed {action.action_type.value}")
+
+    browser = FailingBrowser()
+    llm = MockLLM(
+        [
+            ActorOutput(thinking="First click", action_type=ActionType.CLICK, target_id=1),
+            ActorOutput(thinking="Second click", action_type=ActionType.CLICK, target_id=2),
+            ActorOutput(thinking="Done", action_type=ActionType.DONE),
+        ]
+    )
+    actor = ActorService(browser=browser, llm=llm)
+
+    result = await actor.execute_task(Task(description="Test task"), max_steps=10)
+
     assert result.success
-    assert browser.actions_executed == ["CLICK", "STUCK"]
+    assert browser.actions_executed == ["CLICK", "CLICK"]
 
 
 # ============================================================
@@ -119,6 +164,8 @@ async def test_mock_react_loop_stops_on_stuck():
 # ============================================================
 
 CDP_PORT = 9222
+CDP_POLL_INTERVAL = 0.2
+CDP_POLL_TIMEOUT = 10
 
 
 def _find_chrome() -> str:
@@ -127,6 +174,17 @@ def _find_chrome() -> str:
     elif platform.system() == "Windows":
         return r"C:\Program Files\Google\Chrome\Application\chrome.exe"
     return "google-chrome"
+
+
+def _wait_for_cdp(port: int, timeout: float = CDP_POLL_TIMEOUT) -> bool:
+    """CDP 포트가 열릴 때까지 polling."""
+    start = time.time()
+    while time.time() - start < timeout:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(("localhost", port)) == 0:
+                return True
+        time.sleep(CDP_POLL_INTERVAL)
+    return False
 
 
 @pytest.fixture(scope="module")
@@ -143,14 +201,18 @@ def chrome():
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(3)
+
+    if not _wait_for_cdp(CDP_PORT):
+        proc.terminate()
+        pytest.skip("Chrome CDP failed to start")
+
     yield proc
     proc.terminate()
     proc.wait(timeout=5)
     shutil.rmtree(user_data_dir, ignore_errors=True)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def container():
     from surfy.container import Container
 
@@ -159,9 +221,11 @@ def container():
 
 @pytest_asyncio.fixture
 async def browser(chrome, container):
-    b = await container.browser()
+    # Resource provider는 await로 초기화
+    b = await container.browser.init()
     yield b
-    await b.close()
+    # Resource 정리
+    await container.browser.shutdown()
 
 
 @pytest.mark.asyncio

@@ -1,3 +1,4 @@
+import json
 import logging
 
 from browser_use import BrowserSession
@@ -51,13 +52,9 @@ class BrowserUseAdapter(BrowserPort):
                     element = self._resolve_element(action.target_id)
                     await element.fill(action.value)
                 case ActionType.SCROLL_DOWN:
-                    await cdp.send.Runtime.evaluate(
-                        params={"expression": "window.scrollBy(0, 500)"}
-                    )
+                    await cdp.send.Runtime.evaluate(params={"expression": "window.scrollBy(0, 500)"})
                 case ActionType.SCROLL_UP:
-                    await cdp.send.Runtime.evaluate(
-                        params={"expression": "window.scrollBy(0, -500)"}
-                    )
+                    await cdp.send.Runtime.evaluate(params={"expression": "window.scrollBy(0, -500)"})
                 case ActionType.SEND_KEYS:
                     assert action.value is not None
                     await self._send_key(action.value)
@@ -97,7 +94,11 @@ class BrowserUseAdapter(BrowserPort):
         )
 
     async def _send_key(self, key: str) -> None:
-        """JavaScript를 통해 키보드 이벤트 전송 (Enter, Tab, Escape 등)."""
+        """JavaScript를 통해 키보드 이벤트 전송 (Enter, Tab, Escape 등).
+
+        Note: keypress 이벤트는 deprecated지만 일부 레거시 사이트 호환을 위해 유지.
+        """
+        # keyCode 매핑 (레거시 호환용)
         key_code_map = {
             "Enter": 13,
             "Tab": 9,
@@ -108,42 +109,65 @@ class BrowserUseAdapter(BrowserPort):
             "ArrowLeft": 37,
             "ArrowRight": 39,
         }
+        # code 속성 매핑 (물리 키 위치)
+        code_map = {
+            "Enter": "Enter",
+            "Tab": "Tab",
+            "Escape": "Escape",
+            "Backspace": "Backspace",
+            "ArrowUp": "ArrowUp",
+            "ArrowDown": "ArrowDown",
+            "ArrowLeft": "ArrowLeft",
+            "ArrowRight": "ArrowRight",
+        }
+
         key_code = key_code_map.get(key, ord(key[0]) if key else 0)
+        code = code_map.get(key, f"Key{key.upper()}" if len(key) == 1 else key)
+
+        # XSS 방지: key 값을 JSON으로 이스케이프
+        safe_key = json.dumps(key)
+        safe_code = json.dumps(code)
 
         js = f"""
         (function() {{
+            const key = {safe_key};
+            const code = {safe_code};
+            const keyCode = {key_code};
             const el = document.activeElement;
+            if (!el) return;
+
             const keydownEvent = new KeyboardEvent('keydown', {{
-                key: '{key}',
-                code: '{key}',
-                keyCode: {key_code},
-                which: {key_code},
+                key: key,
+                code: code,
+                keyCode: keyCode,
+                which: keyCode,
                 bubbles: true,
                 cancelable: true
             }});
             const keypressEvent = new KeyboardEvent('keypress', {{
-                key: '{key}',
-                code: '{key}',
-                keyCode: {key_code},
-                which: {key_code},
+                key: key,
+                code: code,
+                keyCode: keyCode,
+                which: keyCode,
                 bubbles: true,
                 cancelable: true
             }});
             const keyupEvent = new KeyboardEvent('keyup', {{
-                key: '{key}',
-                code: '{key}',
-                keyCode: {key_code},
-                which: {key_code},
+                key: key,
+                code: code,
+                keyCode: keyCode,
+                which: keyCode,
                 bubbles: true,
                 cancelable: true
             }});
+
             el.dispatchEvent(keydownEvent);
             el.dispatchEvent(keypressEvent);
             el.dispatchEvent(keyupEvent);
-            
-            // Enter인 경우 form submit도 시도
-            if ('{key}' === 'Enter' && el.form) {{
-                el.form.submit();
+
+            // Enter인 경우 form submit 시도 (validation 존중)
+            if (key === 'Enter' && el.form && !keydownEvent.defaultPrevented) {{
+                el.form.requestSubmit();
             }}
         }})();
         """
