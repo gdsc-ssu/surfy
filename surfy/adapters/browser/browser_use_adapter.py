@@ -97,14 +97,58 @@ class BrowserUseAdapter(BrowserPort):
         )
 
     async def _send_key(self, key: str) -> None:
-        """CDP를 통해 키보드 이벤트 전송 (Enter, Tab, Escape 등)."""
+        """JavaScript를 통해 키보드 이벤트 전송 (Enter, Tab, Escape 등)."""
+        key_code_map = {
+            "Enter": 13,
+            "Tab": 9,
+            "Escape": 27,
+            "Backspace": 8,
+            "ArrowUp": 38,
+            "ArrowDown": 40,
+            "ArrowLeft": 37,
+            "ArrowRight": 39,
+        }
+        key_code = key_code_map.get(key, ord(key[0]) if key else 0)
+
+        js = f"""
+        (function() {{
+            const el = document.activeElement;
+            const keydownEvent = new KeyboardEvent('keydown', {{
+                key: '{key}',
+                code: '{key}',
+                keyCode: {key_code},
+                which: {key_code},
+                bubbles: true,
+                cancelable: true
+            }});
+            const keypressEvent = new KeyboardEvent('keypress', {{
+                key: '{key}',
+                code: '{key}',
+                keyCode: {key_code},
+                which: {key_code},
+                bubbles: true,
+                cancelable: true
+            }});
+            const keyupEvent = new KeyboardEvent('keyup', {{
+                key: '{key}',
+                code: '{key}',
+                keyCode: {key_code},
+                which: {key_code},
+                bubbles: true,
+                cancelable: true
+            }});
+            el.dispatchEvent(keydownEvent);
+            el.dispatchEvent(keypressEvent);
+            el.dispatchEvent(keyupEvent);
+            
+            // Enter인 경우 form submit도 시도
+            if ('{key}' === 'Enter' && el.form) {{
+                el.form.submit();
+            }}
+        }})();
+        """
         cdp = self._session.cdp_client
-        await cdp.send.Input.dispatchKeyEvent(
-            params={"type": "keyDown", "key": key}
-        )
-        await cdp.send.Input.dispatchKeyEvent(
-            params={"type": "keyUp", "key": key}
-        )
+        await cdp.send.Runtime.evaluate(params={"expression": js})
 
     async def _go_back(self) -> None:
         """CDP를 통해 브라우저 히스토리 뒤로가기."""
