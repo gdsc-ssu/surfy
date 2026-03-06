@@ -29,7 +29,7 @@ def _load_prompty(name: str) -> str:
 class AnthropicAdapter(LLMPort):
     def __init__(self, *, use_vision: bool, model_name: str):
         self._use_vision = use_vision
-        self._model = ChatAnthropic(model_name=model_name)
+        self._model = ChatAnthropic(model_name=model_name)  # type: ignore[call-arg]
         self._structured_model = self._model.with_structured_output(ActorOutput)
         self._prompt_template = _load_prompty("actor")
 
