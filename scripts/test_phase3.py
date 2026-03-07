@@ -105,14 +105,18 @@ async def main():
 
         # 6. 결과 요약
         logger.info("\n=== Summary ===")
-        logger.info(f"Total tasks: {len(plan.tasks)}")
+        total_tasks = len(plan.tasks)
+        logger.info(f"Total tasks: {total_tasks}")
         logger.info(f"Completed tasks: {len(completed_tasks)}")
-        logger.info(f"Success rate: {len(completed_tasks) / len(plan.tasks) * 100:.1f}%")
-
-        if len(completed_tasks) == len(plan.tasks):
-            logger.info("\n✅ All tasks completed successfully!")
+        if total_tasks > 0:
+            logger.info(f"Success rate: {len(completed_tasks) / total_tasks * 100:.1f}%")
         else:
-            logger.warning("\n⚠️ Some tasks failed or were not verified")
+            logger.info("Success rate: N/A (no tasks)")
+
+        if total_tasks > 0 and len(completed_tasks) == total_tasks:
+            logger.info("\n[SUCCESS] All tasks completed successfully!")
+        else:
+            logger.warning("\n[WARNING] Some tasks failed or were not verified")
 
     except Exception as e:
         logger.exception(f"Error during test: {e}")
