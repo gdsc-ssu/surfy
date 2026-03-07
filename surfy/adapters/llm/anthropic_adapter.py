@@ -4,11 +4,14 @@ from string import Template
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage
 
-from surfy.domain.models import ActorOutput, HistoryEntry, PageState, Task
+from surfy.domain.models import ActorOutput, EvalResult, HistoryEntry, PageState, Task
+from surfy.domain.models.criteria import SuccessCriteria
+from surfy.domain.models.plan import Plan
 from surfy.domain.ports import LLMPort
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
 RECENT_HISTORY_COUNT = 5
+MAX_DOM_TEXT_LENGTH = 5000  # 토큰 제한을 위한 DOM 텍스트 최대 길이
 
 
 def _load_prompty(name: str) -> str:
@@ -36,11 +39,24 @@ def _load_prompty(name: str) -> str:
 
 
 class AnthropicAdapter(LLMPort):
+    """Anthropic Claude를 사용하는 LLM 어댑터.
+
+    Planner, Actor, Evaluator 세 가지 역할을 수행한다.
+    """
+
     def __init__(self, *, use_vision: bool, model_name: str):
         self._use_vision = use_vision
         self._model = ChatAnthropic(model_name=model_name)  # type: ignore[call-arg]
-        self._structured_model = self._model.with_structured_output(ActorOutput)
-        self._prompt_template = _load_prompty("actor")
+
+        # 각 역할별 structured output 모델
+        self._actor_model = self._model.with_structured_output(ActorOutput)
+        self._planner_model = self._model.with_structured_output(Plan)
+        self._evaluator_model = self._model.with_structured_output(EvalResult)
+
+        # 프롬프트 템플릿 로드
+        self._actor_template = _load_prompty("actor")
+        self._planner_template = _load_prompty("planner")
+        self._evaluator_template = _load_prompty("evaluator")
 
     async def decide_action(
         self,
@@ -48,8 +64,8 @@ class AnthropicAdapter(LLMPort):
         page_state: PageState,
         history: list[HistoryEntry],
     ) -> ActorOutput:
-        # {{var}} 형식을 ${var} 형식으로 변환하여 Template 사용
-        template_str = self._prompt_template.replace("{{", "${").replace("}}", "}")
+        """Actor용: 현재 페이지 상태와 히스토리를 기반으로 다음 액션 결정."""
+        template_str = self._actor_template.replace("{{", "${").replace("}}", "}")
         template = Template(template_str)
         prompt = template.safe_substitute(
             task_description=task.description,
@@ -74,12 +90,80 @@ class AnthropicAdapter(LLMPort):
         else:
             messages = [HumanMessage(content=prompt)]
 
-        result = await self._structured_model.ainvoke(messages)
+        result = await self._actor_model.ainvoke(messages)
         if isinstance(result, dict):
             return ActorOutput(**result)
         return result  # type: ignore[return-value]
 
+    async def plan(self, command: str, progress: str) -> Plan:
+        """Planner용: 사용자 명령과 진행 상황을 기반으로 Plan 생성."""
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
+        template_str = self._planner_template.replace("{{", "${").replace("}}", "}")
+        template = Template(template_str)
+        prompt = template.safe_substitute(
+            command=command,
+            progress=progress or "(없음)",
+        )
+
+        messages = [HumanMessage(content=prompt)]
+
+        # Python 3.11 호환: 동기 invoke를 스레드풀에서 실행
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as pool:
+            result = await loop.run_in_executor(pool, lambda: self._planner_model.invoke(messages))
+
+        if isinstance(result, dict):
+            return Plan(**result)
+        return result  # type: ignore[return-value]
+
+    async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:
+        """Evaluator용: 태스크 성공 여부 판정."""
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
+        template_str = self._evaluator_template.replace("{{", "${").replace("}}", "}")
+        template = Template(template_str)
+
+        # DOM 텍스트 길이 제한 (토큰 절약)
+        dom_text = page_state.dom_text
+        if len(dom_text) > MAX_DOM_TEXT_LENGTH:
+            dom_text = dom_text[:MAX_DOM_TEXT_LENGTH] + "\n... (truncated)"
+
+        prompt = template.safe_substitute(
+            description=criteria.description,
+            url=page_state.url,
+            dom_text=dom_text,
+        )
+
+        # vision 지원
+        if self._use_vision and page_state.screenshot:
+            messages = [
+                HumanMessage(
+                    content=[
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{page_state.screenshot}"},
+                        },
+                    ]
+                )
+            ]
+        else:
+            messages = [HumanMessage(content=prompt)]
+
+        # Python 3.11 호환: 동기 invoke를 스레드풀에서 실행
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as pool:
+            result = await loop.run_in_executor(pool, lambda: self._evaluator_model.invoke(messages))
+
+        if isinstance(result, dict):
+            return EvalResult(**result)
+        return result  # type: ignore[return-value]
+
     def _format_history(self, history: list[HistoryEntry]) -> str:
+        """액션 히스토리를 문자열로 포맷."""
         if not history:
             return "(No actions taken yet)"
 
