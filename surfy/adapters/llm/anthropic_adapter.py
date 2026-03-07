@@ -1,3 +1,5 @@
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from string import Template
 
@@ -97,9 +99,6 @@ class AnthropicAdapter(LLMPort):
 
     async def plan(self, command: str, progress: str) -> Plan:
         """Planner용: 사용자 명령과 진행 상황을 기반으로 Plan 생성."""
-        import asyncio
-        from concurrent.futures import ThreadPoolExecutor
-
         template_str = self._planner_template.replace("{{", "${").replace("}}", "}")
         template = Template(template_str)
         prompt = template.safe_substitute(
@@ -110,7 +109,7 @@ class AnthropicAdapter(LLMPort):
         messages = [HumanMessage(content=prompt)]
 
         # Python 3.11 호환: 동기 invoke를 스레드풀에서 실행
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         with ThreadPoolExecutor() as pool:
             result = await loop.run_in_executor(pool, lambda: self._planner_model.invoke(messages))
 
@@ -120,13 +119,10 @@ class AnthropicAdapter(LLMPort):
 
     async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:
         """Evaluator용: 태스크 성공 여부 판정."""
-        import asyncio
-        from concurrent.futures import ThreadPoolExecutor
-
         template_str = self._evaluator_template.replace("{{", "${").replace("}}", "}")
         template = Template(template_str)
 
-        # DOM 텍스트 길이 제한 (토큰 절약)
+        # DOM 텍스트 길이 제한
         dom_text = page_state.dom_text
         if len(dom_text) > MAX_DOM_TEXT_LENGTH:
             dom_text = dom_text[:MAX_DOM_TEXT_LENGTH] + "\n... (truncated)"
@@ -154,7 +150,7 @@ class AnthropicAdapter(LLMPort):
             messages = [HumanMessage(content=prompt)]
 
         # Python 3.11 호환: 동기 invoke를 스레드풀에서 실행
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         with ThreadPoolExecutor() as pool:
             result = await loop.run_in_executor(pool, lambda: self._evaluator_model.invoke(messages))
 
