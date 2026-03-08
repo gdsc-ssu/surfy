@@ -8,7 +8,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.llm import AnthropicAdapter
-from surfy.domain.services import ActorService, EvaluatorService, PlannerService
+from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ScoutService
 from surfy.graph import compile_graph
 from surfy.state import AgentState
 
@@ -21,6 +21,7 @@ def _ensure_asyncio_create_task_compat() -> None:
     original_create_task = asyncio.create_task
 
     def create_task_compat(coro, *, name=None, context=None):
+        _ = context
         if name is not None:
             return original_create_task(coro, name=name)
         return original_create_task(coro)
@@ -35,14 +36,16 @@ async def run(command: str) -> AgentState:
 
     planner = PlannerService(llm=llm)
     actor = ActorService(browser=browser, llm=llm)
+    scout = ScoutService(browser=browser, llm=llm)
     evaluator = EvaluatorService(browser=browser, llm=llm)
 
     checkpointer = MemorySaver()
-    graph = compile_graph(planner=planner, actor=actor, evaluator=evaluator, checkpointer=checkpointer)
+    graph = compile_graph(scout=scout, planner=planner, actor=actor, evaluator=evaluator, checkpointer=checkpointer)
 
     initial_state: AgentState = {
         "command": command,
         "plan": None,
+        "route_map": None,
         "current_task_idx": 0,
         "eval_result": None,
         "retry_count": 0,
