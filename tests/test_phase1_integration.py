@@ -2,6 +2,7 @@
 
 실행: uv run pytest tests/test_phase1_integration.py -v
 """
+import os
 import platform
 import shutil
 import subprocess
@@ -25,10 +26,14 @@ def _find_chrome() -> str:
 
 @pytest.fixture(scope="module")
 def chrome():
+    chrome_path = _find_chrome()
+    if not shutil.which(chrome_path) and not os.path.exists(chrome_path):
+        pytest.skip("Chrome not installed — skipping integration tests")
+
     user_data_dir = tempfile.mkdtemp(prefix="surfy_test_")
     proc = subprocess.Popen(
         [
-            _find_chrome(),
+            chrome_path,
             f"--remote-debugging-port={CDP_PORT}",
             f"--user-data-dir={user_data_dir}",
             "--no-first-run",
