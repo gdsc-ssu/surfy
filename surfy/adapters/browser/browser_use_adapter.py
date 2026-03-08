@@ -27,7 +27,7 @@ class BrowserUseAdapter(BrowserPort):
         if cdp_url is not None:
             session = BrowserSession(cdp_url=cdp_url)
         else:
-            session = BrowserSession(headless=False)
+            session = BrowserSession(headless=False, disable_security=True)
         await session.start()
         logger.info("브라우저 연결 완료: %s", cdp_url or "자동 실행")
         return cls(session)
