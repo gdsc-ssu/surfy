@@ -1,4 +1,7 @@
 import asyncio
+import base64
+import binascii
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from string import Template
@@ -14,6 +17,9 @@ from surfy.domain.ports import LLMPort
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
 RECENT_HISTORY_COUNT = 5
 MAX_DOM_TEXT_LENGTH = 5000  # 토큰 제한을 위한 DOM 텍스트 최대 길이
+ANTHROPIC_MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+logger = logging.getLogger(__name__)
 
 
 def _load_prompty(name: str) -> str:
@@ -77,20 +83,7 @@ class AnthropicAdapter(LLMPort):
             formatted_history=self._format_history(history),
         )
 
-        if self._use_vision and page_state.screenshot:
-            messages = [
-                HumanMessage(
-                    content=[
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{page_state.screenshot}"},
-                        },
-                    ]
-                )
-            ]
-        else:
-            messages = [HumanMessage(content=prompt)]
+        messages = [self._build_human_message(prompt, page_state.screenshot if self._use_vision else None)]
 
         result = await self._actor_model.ainvoke(messages)
         if isinstance(result, dict):
@@ -133,21 +126,7 @@ class AnthropicAdapter(LLMPort):
             dom_text=dom_text,
         )
 
-        # vision 지원
-        if self._use_vision and page_state.screenshot:
-            messages = [
-                HumanMessage(
-                    content=[
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{page_state.screenshot}"},
-                        },
-                    ]
-                )
-            ]
-        else:
-            messages = [HumanMessage(content=prompt)]
+        messages = [self._build_human_message(prompt, page_state.screenshot if self._use_vision else None)]
 
         # Python 3.11 호환: 동기 invoke를 스레드풀에서 실행
         loop = asyncio.get_running_loop()
@@ -188,3 +167,32 @@ class AnthropicAdapter(LLMPort):
             for i, entry in enumerate(recent)
         )
         return f"{old_summary}\n\n{recent_text}"
+
+    def _build_human_message(self, prompt: str, screenshot_b64: str | None) -> HumanMessage:
+        if not screenshot_b64:
+            return HumanMessage(content=prompt)
+
+        try:
+            image_bytes = base64.b64decode(screenshot_b64, validate=True)
+        except (binascii.Error, ValueError):
+            logger.warning("Invalid base64 screenshot. Sending text-only prompt.")
+            return HumanMessage(content=prompt)
+
+        image_size = len(image_bytes)
+        if image_size > ANTHROPIC_MAX_IMAGE_BYTES:
+            logger.warning(
+                "Screenshot too large for Anthropic (%d bytes > %d). Sending text-only prompt.",
+                image_size,
+                ANTHROPIC_MAX_IMAGE_BYTES,
+            )
+            return HumanMessage(content=prompt)
+
+        return HumanMessage(
+            content=[
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"},
+                },
+            ]
+        )
