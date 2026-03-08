@@ -11,6 +11,7 @@ Plan Anchor 패턴:
 
 from surfy.domain.models import Task
 from surfy.domain.models.plan import Plan
+from surfy.domain.models.route import RouteMap
 from surfy.domain.ports import LLMPort
 
 
@@ -24,16 +25,18 @@ class PlannerService:
     def __init__(self, llm: LLMPort):
         self._llm = llm
 
-    async def create_plan(self, command: str) -> Plan:
+    async def create_plan(self, command: str, route_map: RouteMap | None = None) -> Plan:
         """첫 호출: anchor 설정 + 첫 1~2 태스크 생성.
 
         Args:
             command: 사용자 명령
+            route_map: Scout 단계에서 수집된 관찰 내용 (선택 사항)
 
         Returns:
             Plan: anchor, tasks, anchor_rationale을 포함한 계획
         """
-        return await self._llm.plan(command, progress="")
+        route_obs = self._format_route_observations(route_map) if route_map else ""
+        return await self._llm.plan(command, progress="", route_observations=route_obs)
 
     async def next_tasks(self, plan: Plan, completed_tasks: list[Task]) -> Plan:
         """이후 호출: anchor 유지, 진행 상황 기반으로 다음 태스크 생성.
@@ -48,7 +51,7 @@ class PlannerService:
             Plan: anchor는 유지, 새로운 tasks가 포함된 계획
         """
         progress = self._summarize_progress(completed_tasks)
-        new_plan = await self._llm.plan(plan.anchor, progress)
+        new_plan = await self._llm.plan(plan.anchor, progress, route_observations="")
         # anchor는 절대 변경 안 됨
         new_plan.anchor = plan.anchor
         return new_plan
@@ -65,7 +68,7 @@ class PlannerService:
             Plan: anchor는 유지, 재계획된 tasks가 포함된 계획
         """
         progress = f"실패한 태스크: {failed_task.description}\n사유: {reason}"
-        new_plan = await self._llm.plan(plan.anchor, progress)
+        new_plan = await self._llm.plan(plan.anchor, progress, route_observations="")
         # anchor는 절대 변경 안 됨
         new_plan.anchor = plan.anchor
         return new_plan
@@ -82,3 +85,25 @@ class PlannerService:
         if not completed_tasks:
             return ""
         return "완료된 태스크:\n" + "\n".join(f"- {task.description}" for task in completed_tasks)
+
+    def _format_route_observations(self, route_map: RouteMap) -> str:
+        """RouteMap을 LLM용 관찰 문자열로 변환.
+
+        Args:
+            route_map: Scout 단계에서 수집된 관찰 내용
+
+        Returns:
+            str: 포맷팅된 관찰 문자열
+        """
+        if not route_map.steps:
+            return ""
+        lines = [f"Scout 탐색 요약: {route_map.scout_summary}", ""]
+        for i, step in enumerate(route_map.steps, 1):
+            elements = ", ".join(step.observed_elements[:5])  # limit to 5 elements
+            lines.append(f"Step {i}: {step.action_taken} → {step.url}")
+            if elements:
+                lines.append(f"  발견한 요소: {elements}")
+            if step.notes:
+                lines.append(f"  메모: {step.notes}")
+        lines.append(f"\n최종 URL: {route_map.final_url}")
+        return "\n".join(lines)

@@ -79,7 +79,16 @@ class MockLLM(LLMPort):
         self._index += 1
         return action
 
-    async def plan(self, command: str, progress: str) -> Plan:
+    async def scout(
+        self,
+        task: Task,
+        page_state: PageState,
+        history: list[HistoryEntry],
+    ) -> ActorOutput:
+        """Mock scout — Phase 2 테스트에서는 사용하지 않음."""
+        return ActorOutput(thinking="Scout", action_type=ActionType.DONE)
+
+    async def plan(self, command: str, progress: str, route_observations: str = "") -> Plan:
         """Mock plan — Phase 2 테스트에서는 사용하지 않음."""
         return Plan(
             anchor=command,

@@ -15,7 +15,7 @@ from surfy.domain.models.plan import Plan
 from surfy.domain.ports import LLMPort
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
-RECENT_HISTORY_COUNT = 5
+RECENT_HISTORY_COUNT = 10
 MAX_DOM_TEXT_LENGTH = 5000  # 토큰 제한을 위한 DOM 텍스트 최대 길이
 ANTHROPIC_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -63,6 +63,7 @@ class AnthropicAdapter(LLMPort):
 
         # 프롬프트 템플릿 로드
         self._actor_template = _load_prompty("actor")
+        self._scout_template = _load_prompty("scout")
         self._planner_template = _load_prompty("planner")
         self._evaluator_template = _load_prompty("evaluator")
 
@@ -90,13 +91,38 @@ class AnthropicAdapter(LLMPort):
             return ActorOutput(**result)
         return result  # type: ignore[return-value]
 
-    async def plan(self, command: str, progress: str) -> Plan:
+    async def scout(
+        self,
+        task: Task,
+        page_state: PageState,
+        history: list[HistoryEntry],
+    ) -> ActorOutput:
+        """Scout용: 정찰 모드에서 다음 액션 결정."""
+        template_str = self._scout_template.replace("{{", "${").replace("}}", "}")
+        template = Template(template_str)
+        prompt = template.safe_substitute(
+            task_description=task.description,
+            url=page_state.url,
+            title=page_state.title,
+            dom_text=page_state.dom_text,
+            formatted_history=self._format_history(history),
+        )
+
+        messages = [self._build_human_message(prompt, page_state.screenshot if self._use_vision else None)]
+
+        result = await self._actor_model.ainvoke(messages)
+        if isinstance(result, dict):
+            return ActorOutput(**result)
+        return result  # type: ignore[return-value]
+
+    async def plan(self, command: str, progress: str, route_observations: str = "") -> Plan:
         """Planner용: 사용자 명령과 진행 상황을 기반으로 Plan 생성."""
         template_str = self._planner_template.replace("{{", "${").replace("}}", "}")
         template = Template(template_str)
         prompt = template.safe_substitute(
             command=command,
             progress=progress or "(없음)",
+            route_observations=route_observations or "(Scout 데이터 없음)",
         )
 
         messages = [HumanMessage(content=prompt)]
