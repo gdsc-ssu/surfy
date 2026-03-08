@@ -22,12 +22,23 @@ class LLMPort(ABC):
         ...
 
     @abstractmethod
-    async def plan(self, command: str, progress: str) -> Plan:
+    async def scout(
+        self,
+        task: Task,
+        page_state: PageState,
+        history: list[HistoryEntry],
+    ) -> ActorOutput:
+        """Scout용: 정찰 모드에서 다음 액션 결정."""
+        ...
+
+    @abstractmethod
+    async def plan(self, command: str, progress: str, route_observations: str = "") -> Plan:
         """Planner용: 사용자 명령과 진행 상황을 기반으로 Plan 생성.
 
         Args:
             command: 사용자 명령 또는 anchor (최종 목표)
             progress: 지금까지의 진행 요약 (빈 문자열이면 첫 호출)
+            route_observations: Scout 단계에서 수집된 관찰 내용 (선택 사항)
 
         Returns:
             Plan: anchor, tasks, anchor_rationale을 포함한 계획

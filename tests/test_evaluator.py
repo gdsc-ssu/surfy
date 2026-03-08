@@ -53,7 +53,10 @@ class MockLLM(LLMPort):
     async def decide_action(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
         return ActorOutput(thinking="test", action_type=ActionType.DONE)
 
-    async def plan(self, command: str, progress: str) -> Plan:
+    async def scout(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
+        return ActorOutput(thinking="test", action_type=ActionType.DONE)
+
+    async def plan(self, command: str, progress: str, route_observations: str = "") -> Plan:
         return Plan(anchor=command, tasks=[], anchor_rationale="test")
 
     async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:
