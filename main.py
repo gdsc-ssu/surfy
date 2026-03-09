@@ -31,6 +31,8 @@ def _ensure_asyncio_create_task_compat() -> None:
 
 async def run(command: str) -> AgentState:
     _ensure_asyncio_create_task_compat()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     browser = await BrowserUseAdapter.create()
     llm = AnthropicAdapter(use_vision=True, model_name="claude-sonnet-4-20250514")
 
@@ -57,13 +59,72 @@ async def run(command: str) -> AgentState:
         "error": None,
     }
 
+    logger = logging.getLogger("surfy.run")
+    final_state = initial_state
+
     try:
-        result = await graph.ainvoke(initial_state, config={"configurable": {"thread_id": "surfy-phase4-default"}})
-        typed_result = cast(AgentState, result)
-        logging.info("작업이 완료되었습니다.")
-        return typed_result
+        async for event in graph.astream(
+            initial_state,
+            config={"configurable": {"thread_id": "surfy-default"}},
+        ):
+            for node_name, updates in event.items():
+                _log_node_result(logger, node_name, updates)
+                final_state = {**final_state, **updates}
+
+        logger.info("=" * 60)
+        logger.info("작업 완료. done=%s, error=%s", final_state.get("done"), final_state.get("error"))
+        return cast(AgentState, final_state)
     finally:
         await browser.close()
+
+
+def _log_node_result(logger: logging.Logger, node_name: str, updates: dict) -> None:
+    """각 노드 실행 결과를 사람이 읽기 좋게 로깅."""
+    tag = f"[{node_name.upper()}]"
+
+    if node_name == "scout":
+        route_map = updates.get("route_map")
+        if route_map is not None:
+            logger.info(
+                "%s RouteMap 생성: %d steps, final_url=%s, summary=%s",
+                tag,
+                len(route_map.steps),
+                route_map.final_url,
+                route_map.scout_summary,
+            )
+        else:
+            logger.info("%s Scout 실패 — blind planning으로 진행", tag)
+
+    elif node_name == "planner":
+        plan = updates.get("plan")
+        if plan is not None:
+            task_names = [t.description[:50] for t in plan.tasks]
+            logger.info("%s Plan anchor=%s", tag, plan.anchor[:80])
+            logger.info("%s   tasks=%s", tag, task_names)
+        done = updates.get("done")
+        if done:
+            logger.info("%s 완료 처리됨 (error=%s)", tag, updates.get("error"))
+
+    elif node_name == "actor":
+        history = updates.get("history", [])
+        if history:
+            entry = history[-1]
+            logger.info(
+                "%s %s → %s",
+                tag,
+                entry.action.action_type.value,
+                entry.result.message[:80] if entry.result.message else "",
+            )
+
+    elif node_name == "evaluator":
+        eval_result = updates.get("eval_result")
+        if eval_result is not None:
+            logger.info(
+                "%s %s — %s",
+                tag,
+                "✅ 성공" if eval_result.success else "❌ 실패",
+                eval_result.reason[:80],
+            )
 
 
 def main(command: str) -> None:
