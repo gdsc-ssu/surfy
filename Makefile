@@ -11,6 +11,6 @@ typecheck:
 	uv run pyright surfy/
 
 test:
-	uv run pytest tests/ -v --ignore=tests/test_phase1_integration.py
+	uv run pytest tests/ -v --ignore=tests/test_phase1_integration.py -m "not real"
 
 check: lint typecheck test
