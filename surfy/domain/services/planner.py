@@ -9,10 +9,14 @@ Plan Anchor 패턴:
     scripts/debug_planner.py 참고
 """
 
+import logging
+
 from surfy.domain.models import Task
 from surfy.domain.models.plan import Plan
 from surfy.domain.models.route import RouteMap
 from surfy.domain.ports import LLMPort
+
+logger = logging.getLogger(__name__)
 
 
 class PlannerService:
@@ -36,6 +40,10 @@ class PlannerService:
             Plan: anchor, tasks, anchor_rationale을 포함한 계획
         """
         route_obs = self._format_route_observations(route_map) if route_map else ""
+        logger.info(
+            "Planner create_plan called (route_observations=%s)",
+            "provided" if route_obs else "empty",
+        )
         return await self._llm.plan(command, progress="", route_observations=route_obs)
 
     async def next_tasks(self, plan: Plan, completed_tasks: list[Task]) -> Plan:

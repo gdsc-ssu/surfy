@@ -32,6 +32,7 @@ class ScoutService:
             steps.append(route_step)
 
             if output.action_type == ActionType.DONE:
+                logger.info("Scout completed. RouteMap created with %d steps.", len(steps))
                 return RouteMap(
                     steps=steps,
                     final_url=page_state.url,
@@ -39,6 +40,7 @@ class ScoutService:
                 )
 
             if output.action_type == ActionType.STUCK:
+                logger.info("Scout stuck. Partial RouteMap created with %d steps.", len(steps))
                 return RouteMap(
                     steps=steps,
                     final_url=page_state.url,
@@ -49,6 +51,7 @@ class ScoutService:
             result = await self._browser.execute_action(action)
             history.append(HistoryEntry(action=output, result=result, step=step + 1))
 
+        logger.info("Scout max steps reached. RouteMap created with %d steps.", len(steps))
         return RouteMap(
             steps=steps,
             final_url=steps[-1].url if steps else "",

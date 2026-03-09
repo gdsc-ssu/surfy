@@ -53,11 +53,13 @@ class ActorService:
             output = await self._llm.decide_action(task, page_state, history)
 
             logger.info(
-                "Step %d: %s (target=%s, value=%s)",
+                "Step %d: %s (target=%s, value=%s, eval=%s, next_goal=%s)",
                 step + 1,
                 output.action_type.value,
                 output.target_id,
                 output.value,
+                output.evaluation_previous_goal,
+                output.next_goal,
             )
 
             # 종료 조건 먼저 체크
@@ -65,11 +67,13 @@ class ActorService:
                 return StepResult(
                     success=True,
                     message=output.value or "Task completed",
+                    page_state=page_state,
                 )
             if output.action_type == ActionType.STUCK:
                 return StepResult(
                     success=False,
                     message=output.value or "Agent stuck",
+                    page_state=page_state,
                 )
 
             action = output.to_browser_action()
