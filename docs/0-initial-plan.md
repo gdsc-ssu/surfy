@@ -184,13 +184,21 @@ class BrowserPort(ABC):
     async def check_text_visible(self, text: str) -> bool:
         """Evaluator의 구조 체크용"""
 
-    async def connect(self, cdp_url: str) -> None:
-        """기존 Chrome에 CDP 연결"""
-
     async def close(self) -> None:
+        """세션 종료"""
 ```
 
-`BrowserUseAdapter`는 browser-use의 `BrowserSession`, `DomService`, `DOMTreeSerializer`를 래핑.
+`BrowserUseAdapter`는 browser-use의 `BrowserSession`, `DomService`, `DOMTreeSerializer`를 래핑. CDP 연결은 factory method로 처리:
+
+```python
+class BrowserUseAdapter(BrowserPort):
+    @classmethod
+    async def create(cls, cdp_url: str) -> "BrowserUseAdapter":
+        """Factory method — CDP 연결 후 인스턴스 반환"""
+        session = BrowserSession(cdp_url=cdp_url)
+        await session.start()
+        return cls(session)
+```
 
 ### LLMPort / AnthropicAdapter (adapters/llm/)
 
@@ -255,7 +263,7 @@ dependencies = [
 
 ## 검증 방법
 
-1. **Phase 1 검증**: `python -c "from surfy.adapters.browser... ; adapter.connect('http://localhost:9222'); print(adapter.get_page_state())"` — DOM text 출력 확인
+1. **Phase 1 검증**: `python -c "import asyncio; from surfy.adapters.browser import BrowserUseAdapter; adapter = asyncio.run(BrowserUseAdapter.create('http://localhost:9222')); print(asyncio.run(adapter.get_page_state()))"` — DOM text 출력 확인
 2. **Phase 2 검증**: Actor 단독 실행으로 Google 검색 성공 여부
 3. **Phase 3 검증**: Planner가 태스크 분해 → Actor 실행 → Evaluator 판정 흐름
 4. **Phase 4 검증**: `python main.py "네이버에서 오늘 날씨 검색"` end-to-end
