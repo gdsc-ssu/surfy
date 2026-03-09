@@ -1,0 +1,20 @@
+import operator
+from typing import Annotated, TypedDict
+
+from surfy.domain.models import EvalResult, HistoryEntry, PageState, RouteMap, Task
+from surfy.domain.models.plan import Plan
+
+
+class AgentState(TypedDict):
+    command: str
+    plan: Plan | None
+    route_map: RouteMap | None
+    current_task_idx: int
+    eval_result: EvalResult | None
+    retry_count: int
+    max_retries: int
+    history: Annotated[list[HistoryEntry], operator.add]
+    completed_tasks: Annotated[list[Task], operator.add]
+    last_page_state: PageState | None
+    done: bool
+    error: str | None

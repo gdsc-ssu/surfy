@@ -19,9 +19,12 @@ from surfy.domain.models import (
     ActionType,
     ActorOutput,
     BrowserAction,
+    EvalResult,
     HistoryEntry,
     PageState,
+    Plan,
     StepResult,
+    SuccessCriteria,
     Task,
 )
 from surfy.domain.ports import BrowserPort, LLMPort
@@ -75,6 +78,27 @@ class MockLLM(LLMPort):
         action = self._actions[self._index]
         self._index += 1
         return action
+
+    async def scout(
+        self,
+        task: Task,
+        page_state: PageState,
+        history: list[HistoryEntry],
+    ) -> ActorOutput:
+        """Mock scout — Phase 2 테스트에서는 사용하지 않음."""
+        return ActorOutput(thinking="Scout", action_type=ActionType.DONE)
+
+    async def plan(self, command: str, progress: str, route_observations: str = "") -> Plan:
+        """Mock plan — Phase 2 테스트에서는 사용하지 않음."""
+        return Plan(
+            anchor=command,
+            tasks=[Task(description=command)],
+            anchor_rationale="Mock plan",
+        )
+
+    async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:
+        """Mock evaluate — Phase 2 테스트에서는 사용하지 않음."""
+        return EvalResult(success=True, reason="Mock evaluation")
 
 
 @pytest.mark.asyncio

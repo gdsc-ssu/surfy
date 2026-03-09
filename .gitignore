@@ -22,3 +22,10 @@ build/
 .claude/*
 !.claude/settings.json
 !.claude/skills/
+
+# Generated artifacts
+graph.png
+
+# Tool state (oh-my-opencode, sisyphus)
+.opencode/
+.sisyphus/
