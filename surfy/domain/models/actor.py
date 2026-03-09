@@ -4,6 +4,9 @@ from surfy.domain.models.action import ActionType, BrowserAction
 
 
 class ActorOutput(BaseModel):
+    evaluation_previous_goal: str = ""
+    memory: str = ""
+    next_goal: str = ""
     thinking: str  # 현재 상황 분석
     action_type: ActionType
     target_id: int | None = None
