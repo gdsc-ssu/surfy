@@ -10,6 +10,7 @@ from surfy.domain.services import ActorService, EvaluatorService, PlannerService
 from surfy.state import AgentState
 
 logger = logging.getLogger(__name__)
+MAX_COMPLETED_TASKS = 8
 
 
 def _current_task(state: AgentState) -> Task | None:
@@ -19,6 +20,13 @@ def _current_task(state: AgentState) -> Task | None:
     if state["current_task_idx"] >= len(plan.tasks):
         return None
     return plan.tasks[state["current_task_idx"]]
+
+
+def _is_repeated_plan(next_tasks: list[Task], completed_tasks: list[Task]) -> bool:
+    if not next_tasks or not completed_tasks:
+        return False
+    completed_descriptions = {task.description.strip() for task in completed_tasks}
+    return all(task.description.strip() in completed_descriptions for task in next_tasks)
 
 
 def compile_graph(
@@ -44,6 +52,15 @@ def compile_graph(
                 return {"plan": new_plan, "done": True, "retry_count": 0, "current_task_idx": 0, "eval_result": None}
             return {"plan": new_plan, "current_task_idx": 0, "retry_count": 0, "eval_result": None, "error": None}
 
+        if len(state["completed_tasks"]) >= MAX_COMPLETED_TASKS:
+            logger.warning("Completed-task cap reached (%d). Finishing gracefully.", MAX_COMPLETED_TASKS)
+            return {
+                "done": True,
+                "error": f"Completed-task cap reached ({MAX_COMPLETED_TASKS})",
+                "retry_count": 0,
+                "eval_result": None,
+            }
+
         eval_result = state["eval_result"]
         if eval_result is not None and not eval_result.success:
             failed_task = _current_task(state)
@@ -58,6 +75,15 @@ def compile_graph(
             next_plan = await planner.next_tasks(plan, state["completed_tasks"])
             if not next_plan.tasks:
                 return {"plan": next_plan, "done": True, "retry_count": 0, "eval_result": None}
+            if _is_repeated_plan(next_plan.tasks, state["completed_tasks"]):
+                logger.warning("Planner produced only repeated tasks. Finishing gracefully.")
+                return {
+                    "plan": next_plan,
+                    "done": True,
+                    "error": "Planner repeated completed tasks",
+                    "retry_count": 0,
+                    "eval_result": None,
+                }
             return {"plan": next_plan, "current_task_idx": 0, "retry_count": 0, "eval_result": None, "error": None}
 
         return {}
