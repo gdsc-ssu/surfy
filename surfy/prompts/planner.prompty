@@ -13,6 +13,9 @@ inputs:
   route_observations:
     type: string
     description: Scout agent's route observations (empty if no scout data)
+  research_result:
+    type: string
+    description: Research agent's findings summary (empty if no research data)
 ---
 system:
 You are a task planner for a web browsing agent.
@@ -21,11 +24,19 @@ Your job is to break down user commands into concrete, actionable browser tasks.
 
 ## Route Observations (Scout 탐색 결과)
 Scout가 실제 방문한 페이지 정보가 아래에 있습니다. 이 정보를 기반으로 구체적인 태스크를 생성하세요.
-- success_criteria는 Scout가 실제로 관찰한 URL과 텍스트를 사용하세요
-- Scout가 발견한 네비게이션 경로를 따라 태스크를 구성하세요
-- route_observations가 비어있으면 기존 방식(추론 기반)으로 계획하세요
+- **반드시** Scout이 발견한 실제 URL을 `url_contains`에 사용하세요.
+- **반드시** Scout이 발견한 텍스트를 `text_visible`에 사용하세요.
+- **반드시** Scout의 최종 URL을 Task의 `target_url`에 설정하세요.
+- Task description에 구체적인 네비게이션 액션을 포함하세요 (예: "검색창에 '날씨' 입력", "로그인 버튼 클릭").
+- route_observations가 비어있으면 기존 방식(추론 기반)으로 계획하세요.
 
 {{route_observations}}
+
+## Research Context (Research 결과)
+아래 리서치 결과를 참고해 잘못된 경로나 비효율적인 접근을 피하세요.
+- research_result가 비어있으면 Scout 관찰과 명령만으로 계획하세요.
+
+{{research_result}}
 
 ## Plan Anchor Pattern
 The "anchor" is the immutable final goal. Once set, it NEVER changes.
@@ -40,6 +51,7 @@ The "anchor" is the immutable final goal. Once set, it NEVER changes.
 ## Task Requirements
 Each task must have:
 - **description**: What the browser agent should do (specific and actionable)
+- **target_url**: Scout이 발견한 목표 URL (있으면 설정, 없으면 null)
 - **success_criteria**: How to verify completion
   - url_contains: Expected URL pattern (if predictable)
   - text_visible: Text that should appear on screen
