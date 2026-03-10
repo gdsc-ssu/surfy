@@ -4,11 +4,15 @@ import logging
 import sys
 from typing import cast
 
+from browser_use import BrowserSession
+from browser_use.llm import ChatAnthropic as BrowserUseChatAnthropic
 from langgraph.checkpoint.memory import MemorySaver
 
 from surfy.adapters.browser import BrowserUseAdapter
+from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
 from surfy.adapters.llm import AnthropicAdapter
-from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ScoutService
+from surfy.adapters.research import DdgsSearchAdapter
+from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ResearcherService, ScoutService
 from surfy.graph import compile_graph
 from surfy.state import AgentState
 
@@ -35,17 +39,32 @@ async def run(command: str) -> AgentState:
 
     browser = await BrowserUseAdapter.create()
     llm = AnthropicAdapter(use_vision=True, model_name="claude-sonnet-4-20250514")
+    agent_llm = BrowserUseChatAnthropic(model="claude-sonnet-4-20250514")
+
+    agent_session = BrowserSession(headless=False, disable_security=True)
+    await agent_session.start()
+
+    agent_adapter = BrowserUseAgentAdapter(session=agent_session, llm=agent_llm)
+    researcher = ResearcherService(research_port=DdgsSearchAdapter())
 
     planner = PlannerService(llm=llm)
     actor = ActorService(browser=browser, llm=llm)
-    scout = ScoutService(browser=browser, llm=llm)
+    scout = ScoutService(agent_adapter=agent_adapter)
     evaluator = EvaluatorService(browser=browser, llm=llm)
 
     checkpointer = MemorySaver()
-    graph = compile_graph(scout=scout, planner=planner, actor=actor, evaluator=evaluator, checkpointer=checkpointer)
+    graph = compile_graph(
+        scout=scout,
+        planner=planner,
+        actor=actor,
+        evaluator=evaluator,
+        researcher=researcher,
+        checkpointer=checkpointer,
+    )
 
     initial_state: AgentState = {
         "command": command,
+        "research_result": None,
         "plan": None,
         "route_map": None,
         "current_task_idx": 0,
@@ -55,6 +74,7 @@ async def run(command: str) -> AgentState:
         "history": [],
         "completed_tasks": [],
         "last_page_state": None,
+        "plan_approved": False,
         "done": False,
         "error": None,
     }
@@ -75,6 +95,7 @@ async def run(command: str) -> AgentState:
         logger.info("작업 완료. done=%s, error=%s", final_state.get("done"), final_state.get("error"))
         return cast(AgentState, final_state)
     finally:
+        await agent_session.stop()
         await browser.close()
 
 
@@ -82,7 +103,19 @@ def _log_node_result(logger: logging.Logger, node_name: str, updates: dict) -> N
     """각 노드 실행 결과를 사람이 읽기 좋게 로깅."""
     tag = f"[{node_name.upper()}]"
 
-    if node_name == "scout":
+    if node_name == "research":
+        research_result = updates.get("research_result")
+        if research_result is not None:
+            logger.info(
+                "%s Research 완료: %s (%d sources)",
+                tag,
+                research_result.summary[:80],
+                len(research_result.sources),
+            )
+        else:
+            logger.info("%s Research 건너뜀", tag)
+
+    elif node_name == "scout":
         route_map = updates.get("route_map")
         if route_map is not None:
             logger.info(
@@ -115,6 +148,12 @@ def _log_node_result(logger: logging.Logger, node_name: str, updates: dict) -> N
                 entry.action.action_type.value,
                 entry.result.message[:80] if entry.result.message else "",
             )
+
+    elif node_name == "plan_approval":
+        if updates.get("plan_approved"):
+            logger.info("%s 사용자 승인 완료", tag)
+        elif updates.get("done"):
+            logger.info("%s 사용자가 실행을 취소했습니다", tag)
 
     elif node_name == "evaluator":
         eval_result = updates.get("eval_result")
