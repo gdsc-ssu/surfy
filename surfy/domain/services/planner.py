@@ -13,6 +13,7 @@ import logging
 
 from surfy.domain.models import Task
 from surfy.domain.models.plan import Plan
+from surfy.domain.models.research import ResearchResult
 from surfy.domain.models.route import RouteMap
 from surfy.domain.ports import LLMPort
 
@@ -29,22 +30,32 @@ class PlannerService:
     def __init__(self, llm: LLMPort):
         self._llm = llm
 
-    async def create_plan(self, command: str, route_map: RouteMap | None = None) -> Plan:
+    async def create_plan(
+        self,
+        command: str,
+        route_map: RouteMap | None = None,
+        research_result: ResearchResult | None = None,
+    ) -> Plan:
         """첫 호출: anchor 설정 + 첫 1~2 태스크 생성.
 
         Args:
             command: 사용자 명령
             route_map: Scout 단계에서 수집된 관찰 내용 (선택 사항)
+            research_result: Research 단계에서 수집된 리서치 결과 (선택 사항)
 
         Returns:
             Plan: anchor, tasks, anchor_rationale을 포함한 계획
         """
         route_obs = self._format_route_observations(route_map) if route_map else ""
+        research_context = self._format_research_result(research_result) if research_result else ""
         logger.info(
-            "Planner create_plan called (route_observations=%s)",
+            "Planner create_plan called (route_observations=%s, research=%s)",
             "provided" if route_obs else "empty",
+            "provided" if research_context else "empty",
         )
-        return await self._llm.plan(command, progress="", route_observations=route_obs)
+        return await self._llm.plan(
+            command, progress="", route_observations=route_obs, research_result=research_context
+        )
 
     async def next_tasks(self, plan: Plan, completed_tasks: list[Task]) -> Plan:
         """이후 호출: anchor 유지, 진행 상황 기반으로 다음 태스크 생성.
@@ -114,4 +125,17 @@ class PlannerService:
             if step.notes:
                 lines.append(f"  메모: {step.notes}")
         lines.append(f"\n최종 URL: {route_map.final_url}")
+        return "\n".join(lines)
+
+    def _format_research_result(self, research_result: ResearchResult) -> str:
+        lines = [f"Research 요약: {research_result.summary}"]
+        if research_result.sources:
+            lines.append("참고 출처:")
+            lines.extend(f"- {source}" for source in research_result.sources[:5])
+        if research_result.raw_results:
+            lines.append("검색 결과:")
+            for i, item in enumerate(research_result.raw_results[:3], 1):
+                lines.append(f"{i}. {item.title} ({item.url})")
+                if item.snippet:
+                    lines.append(f"   - {item.snippet}")
         return "\n".join(lines)
