@@ -26,7 +26,7 @@ class MockLLM(LLMPort):
     """Mock LLMPort for testing PlannerService."""
 
     def __init__(self):
-        self.plan_calls: list[tuple[str, str, str]] = []
+        self.plan_calls: list[tuple[str, str, str, str]] = []
 
     async def decide_action(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
         return ActorOutput(thinking="test", action_type=ActionType.DONE)
@@ -34,8 +34,8 @@ class MockLLM(LLMPort):
     async def scout(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
         return ActorOutput(thinking="test", action_type=ActionType.DONE)
 
-    async def plan(self, command: str, progress: str, route_observations: str = "") -> Plan:
-        self.plan_calls.append((command, progress, route_observations))
+    async def plan(self, command: str, progress: str, route_observations: str = "", research_result: str = "") -> Plan:
+        self.plan_calls.append((command, progress, route_observations, research_result))
         return Plan(
             anchor=f"anchor_for_{command[:10]}",
             tasks=[
@@ -63,7 +63,7 @@ async def test_create_plan_sets_anchor():
     assert len(plan.tasks) == 1
     assert "네이버" in plan.tasks[0].description
     # LLM.plan이 빈 progress로 호출됨
-    assert llm.plan_calls[-1] == ("네이버에서 날씨 검색", "", "")
+    assert llm.plan_calls[-1] == ("네이버에서 날씨 검색", "", "", "")
 
 
 @pytest.mark.asyncio
