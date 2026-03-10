@@ -35,19 +35,21 @@ class EvaluatorService:
         # 1단계: URL 패턴 체크 (비용 없음)
         if criteria.url_contains:
             if criteria.url_contains not in page_state.url:
-                return EvalResult(
-                    success=False,
-                    reason=f"URL에 '{criteria.url_contains}' 없음 (현재: {page_state.url})",
-                )
+                if not criteria.description:
+                    return EvalResult(
+                        success=False,
+                        reason=f"URL에 '{criteria.url_contains}' 없음 (현재: {page_state.url})",
+                    )
 
         # 1단계: 텍스트 가시성 체크 (비용 없음)
         if criteria.text_visible:
             visible = await self._browser.check_text_visible(criteria.text_visible)
             if not visible:
-                return EvalResult(
-                    success=False,
-                    reason=f"'{criteria.text_visible}' 텍스트가 화면에 보이지 않음",
-                )
+                if not criteria.description:
+                    return EvalResult(
+                        success=False,
+                        reason=f"'{criteria.text_visible}' 텍스트가 화면에 보이지 않음",
+                    )
 
         # 2단계: LLM 판정 (구조 체크로 판단 불가한 경우)
         if criteria.description:
