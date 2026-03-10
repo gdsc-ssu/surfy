@@ -36,6 +36,7 @@ def test_step_result_success():
 def test_step_result_with_page_state():
     state = PageState(url="https://example.com", title="Example", dom_text="dom")
     result = StepResult(success=True, message="OK", page_state=state)
+    assert result.page_state is not None
     assert result.page_state.url == "https://example.com"
 
 
@@ -84,6 +85,14 @@ def test_task_with_custom_criteria():
     assert task.success_criteria.url_contains == "naver.com"
 
 
+def test_task_with_target_url():
+    task_default = Task(description="test")
+    assert task_default.target_url is None
+
+    task_with_url = Task(description="test", target_url="https://naver.com")
+    assert task_with_url.target_url == "https://naver.com"
+
+
 def test_plan_creation():
     """Plan 생성 테스트."""
     task1 = Task(description="태스크 1")
@@ -119,3 +128,28 @@ def test_eval_result_failure():
     result = EvalResult(success=False, reason="URL에 'search' 없음")
     assert result.success is False
     assert "search" in result.reason
+
+
+def test_search_result_creation():
+    from surfy.domain.models.research import SearchResult
+
+    sr = SearchResult(title="Test", url="https://example.com", snippet="A snippet")
+    assert sr.title == "Test"
+    assert sr.url == "https://example.com"
+    assert sr.snippet == "A snippet"
+
+
+def test_research_result_creation():
+    from surfy.domain.models.research import ResearchResult
+
+    rr = ResearchResult(summary="Test summary", sources=["https://a.com"], raw_results=[])
+    assert rr.summary == "Test summary"
+    assert len(rr.sources) == 1
+
+
+def test_research_result_defaults():
+    from surfy.domain.models.research import ResearchResult
+
+    rr = ResearchResult(summary="Test")
+    assert rr.sources == []
+    assert rr.raw_results == []
