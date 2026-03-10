@@ -56,10 +56,26 @@ class AnthropicAdapter(LLMPort):
         self._use_vision = use_vision
         self._model = ChatAnthropic(model_name=model_name)  # type: ignore[call-arg]
 
-        # 각 역할별 structured output 모델
-        self._actor_model = self._model.with_structured_output(ActorOutput)
-        self._planner_model = self._model.with_structured_output(Plan)
-        self._evaluator_model = self._model.with_structured_output(EvalResult)
+        self._actor_template = _load_prompty("actor")
+        self._scout_template = _load_prompty("scout")
+        self._planner_template = _load_prompty("planner")
+        self._evaluator_template = _load_prompty("evaluator")
+
+    @property
+    def model(self) -> ChatAnthropic:
+        return self._model
+
+    @property
+    def _actor_model(self):
+        return self._model.with_structured_output(ActorOutput)
+
+    @property
+    def _planner_model(self):
+        return self._model.with_structured_output(Plan)
+
+    @property
+    def _evaluator_model(self):
+        return self._model.with_structured_output(EvalResult)
 
         # 프롬프트 템플릿 로드
         self._actor_template = _load_prompty("actor")
@@ -78,6 +94,7 @@ class AnthropicAdapter(LLMPort):
         template = Template(template_str)
         prompt = template.safe_substitute(
             task_description=task.description,
+            target_url=task.target_url or "(없음)",
             url=page_state.url,
             title=page_state.title,
             dom_text=page_state.dom_text,
@@ -115,7 +132,7 @@ class AnthropicAdapter(LLMPort):
             return ActorOutput(**result)
         return result  # type: ignore[return-value]
 
-    async def plan(self, command: str, progress: str, route_observations: str = "") -> Plan:
+    async def plan(self, command: str, progress: str, route_observations: str = "", research_result: str = "") -> Plan:
         """Planner용: 사용자 명령과 진행 상황을 기반으로 Plan 생성."""
         template_str = self._planner_template.replace("{{", "${").replace("}}", "}")
         template = Template(template_str)
@@ -123,6 +140,7 @@ class AnthropicAdapter(LLMPort):
             command=command,
             progress=progress or "(없음)",
             route_observations=route_observations or "(Scout 데이터 없음)",
+            research_result=research_result or "(Research 데이터 없음)",
         )
 
         messages = [HumanMessage(content=prompt)]
