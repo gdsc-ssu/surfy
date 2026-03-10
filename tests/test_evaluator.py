@@ -162,3 +162,47 @@ async def test_url_matches_but_no_description_passes():
 
     assert result.success is True
     assert llm.evaluate_called is False  # description 없으므로 LLM 호출 안 함
+
+
+@pytest.mark.asyncio
+async def test_url_mismatch_with_description_falls_through_to_llm():
+    """URL 불일치 + description 있으면 LLM 판정으로 넘어감."""
+    browser = MockBrowser()
+    llm = MockLLM(eval_result=EvalResult(success=True, reason="LLM: 올바른 페이지"))
+    evaluator = EvaluatorService(browser, llm)
+
+    task = Task(
+        description="테스트",
+        success_criteria=SuccessCriteria(
+            url_contains="soongsil",
+            description="숭실대학교 소프트웨어학부 공지사항 페이지가 로드되어야 함",
+        ),
+    )
+    page_state = PageState(url="https://sw.ssu.ac.kr/bbs/board.php?bo_table=notice", title="학사 공지사항", dom_text="")
+
+    result = await evaluator.evaluate(task, page_state)
+
+    assert result.success is True
+    assert llm.evaluate_called is True
+
+
+@pytest.mark.asyncio
+async def test_text_not_visible_with_description_falls_through_to_llm():
+    """텍스트 불일치 + description 있으면 LLM 판정으로 넘어감."""
+    browser = MockBrowser(text_visible=False)
+    llm = MockLLM(eval_result=EvalResult(success=True, reason="LLM: OK"))
+    evaluator = EvaluatorService(browser, llm)
+
+    task = Task(
+        description="테스트",
+        success_criteria=SuccessCriteria(
+            text_visible="검색 결과",
+            description="검색 결과가 표시되어야 함",
+        ),
+    )
+    page_state = PageState(url="https://example.com", title="Test", dom_text="")
+
+    result = await evaluator.evaluate(task, page_state)
+
+    assert result.success is True
+    assert llm.evaluate_called is True
