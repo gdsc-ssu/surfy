@@ -11,6 +11,11 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.0",
     "dependency-injector>=4.41",
+    "ddgs>=9.11.2",
+    "duckduckgo-search>=8.1.1",
+    "langchain>=1.2.10",
+    "langchain-openai>=1.1.9",
+    "langgraph-cli[inmem]>=0.4.15",
 ]
 
 [dependency-groups]
