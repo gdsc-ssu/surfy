@@ -71,6 +71,13 @@ class HeartbeatMessage(BaseMessage):
     data: dict[str, Any] = Field(default_factory=dict)
 
 
+class GetStatusMessage(BaseMessage):
+    """현재 상태 요청 메시지."""
+
+    type: Literal["get_status"] = "get_status"
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
 # --- Server to Client Messages ---
 
 
@@ -163,6 +170,7 @@ class ErrorMessage(BaseMessage):
 
 class ConnectedMessageData(BaseModel):
     state: dict[str, Any] | None = None
+    running: bool = False
 
 
 class ConnectedMessage(BaseMessage):
@@ -172,7 +180,7 @@ class ConnectedMessage(BaseMessage):
     data: ConnectedMessageData
 
 
-ClientMessage = RunMessage | ResumeMessage | ChatMessage | CancelMessage | HeartbeatMessage
+ClientMessage = RunMessage | ResumeMessage | ChatMessage | CancelMessage | HeartbeatMessage | GetStatusMessage
 
 
 def parse_client_message(raw: str) -> ClientMessage:
@@ -209,5 +217,7 @@ def parse_client_message(raw: str) -> ClientMessage:
             return CancelMessage.model_validate(data)
         case "heartbeat":
             return HeartbeatMessage.model_validate(data)
+        case "get_status":
+            return GetStatusMessage.model_validate(data)
         case _:
             raise ValueError(f"Unknown message type: {msg_type}")
