@@ -40,6 +40,7 @@ class _FakeGraph:
             yield {"planner": {"done": True, "current_task_idx": 0, "completed_tasks": [], "error": None}}
             return
 
+        await asyncio.sleep(0.05)
         self.interrupted = True
         yield {
             "planner": {
@@ -184,7 +185,12 @@ def test_websocket_run_interrupt_and_resume(reset_server_state, monkeypatch: pyt
 
             ws.send_text(json.dumps({"type": "run", "data": {"command": "do work", "thread_id": "x"}}))
 
-            first_types = [ws.receive_json()["type"] for _ in range(4)]
+            first_types = []
+            while len(first_types) < 4:
+                msg = ws.receive_json()
+                if msg["type"] == "heartbeat":
+                    continue
+                first_types.append(msg["type"])
             assert first_types == ["node_start", "node_end", "state_update", "interrupt"]
 
             ws.send_text(
@@ -199,7 +205,12 @@ def test_websocket_run_interrupt_and_resume(reset_server_state, monkeypatch: pyt
                 )
             )
 
-            resume_types = [ws.receive_json()["type"] for _ in range(6)]
+            resume_types = []
+            while len(resume_types) < 6:
+                msg = ws.receive_json()
+                if msg["type"] == "heartbeat":
+                    continue
+                resume_types.append(msg["type"])
             assert resume_types.count("node_start") == 2
             assert resume_types.count("node_end") == 2
             assert resume_types.count("state_update") == 2
