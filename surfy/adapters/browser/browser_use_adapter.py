@@ -60,7 +60,12 @@ class BrowserUseAdapter(BrowserPort):
             session = BrowserSession(headless=False, disable_security=True, keep_alive=True)
             label = "자동 실행"
         await session.start()
-        logger.info("브라우저 연결 완료: %s", label)
+        # Create a dedicated tab and set it as agent focus to prevent
+        # browser-use from targeting extension pages (side panel, offscreen)
+        # during navigation or auto-recovery after target detach.
+        page = await session.new_page("about:blank")
+        session.agent_focus_target_id = page._target_id
+        logger.info("브라우저 연결 완료 (dedicated tab: %s): %s", page._target_id[:8], label)
         return cls(session)
 
     async def get_page_state(self) -> PageState:
