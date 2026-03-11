@@ -41,6 +41,12 @@ export interface InterruptData {
   payload: Record<string, any>;
 }
 
+export interface ChatMessage {
+  sender: "user" | "system";
+  text: string;
+  timestamp: number;
+}
+
 export interface ServerMessage {
   source: "background";
   type: string;
@@ -59,6 +65,7 @@ export interface AppState {
   error: string | null;
   currentNode: string | null;
   interrupt: InterruptData | null;
+  messages: ChatMessage[];
 }
 
 export type Action =
@@ -71,4 +78,5 @@ export type Action =
   | { type: "CANCELLED" }
   | { type: "ERROR"; message: string }
   | { type: "RUN_STARTED" }
-  | { type: "INTERRUPT_RESOLVED" };
+  | { type: "INTERRUPT_RESOLVED" }
+  | { type: "CHAT_MESSAGE"; sender: "user" | "system"; text: string };
