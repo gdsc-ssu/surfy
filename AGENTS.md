@@ -163,6 +163,55 @@ Research → Scout → Planner → [PlanApproval] → Actor → Evaluator
 - **Evaluator**: 2-stage check. Structural (URL, text) first → LLM fallback if ambiguous.
 - **graph.py is orchestration only.** No `print()`, `input()`, or direct UI logic. Human interaction must go through a port.
 
+## Browser Principle (CRITICAL)
+
+**Surfy는 반드시 사용자가 이미 띄운 Chrome 브라우저에서 작업한다.** 이것이 핵심 원칙이다.
+
+- Surfy는 별도 Chrome을 띄우지 않는다. 사용자의 Chrome에 CDP(Chrome DevTools Protocol)로 연결하여 작업한다.
+- 이유: 사용자가 로그인한 세션, 쿠키, 확장 프로그램 등을 그대로 활용해야 실제 사용자 경험과 동일한 자동화가 가능하다.
+
+### 연결 방법별 한계 (Known Issues)
+
+현재 사용자의 메인 Chrome 프로필에서 완벽하게 동작하는 연결 방법은 없으며, 이는 미해결 아키텍처 이슈입니다.
+
+| 방법 | 설정 | 한계 |
+|------|------|------|
+| `use_system_chrome=true` | browser-use가 시스템 Chrome 프로필로 직접 연결 | Chrome이 이미 실행 중이면 **프로필 잠금(lock) 충돌** 발생 → `session.start()` 실패 또는 불안정 |
+| CDP 모드 (기본 프로필) | `--remote-debugging-port=9222`로 Chrome 실행 | **Chrome 136+ 보안 정책 변경**으로 인해 기본 프로필 경로에서의 CDP 연결이 차단됨 |
+| CDP 모드 (별도 프로필) | `--remote-debugging-port=9222 --user-data-dir=/tmp/chrome-cdp-profile` | 정상 동작하지만 **깨끗한 프로필**로 시작됨 → 사용자 쿠키/세션이 없어 핵심 원칙 위반 |
+
+### 현재 권장 설정 (임시 워크어라운드)
+
+사용자가 이미 Chrome을 띄운 상태에서는 CDP 연결이 불가능하므로, 기존에 실행 중인 Chrome을 모두 닫고 아래와 같이 CDP 모드로 재시작해야 합니다.
+
+```bash
+# 1. 모든 Chrome 프로세스 종료 후 CDP 모드로 실행
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+
+# 2. .env 설정
+BROWSER_USE_SYSTEM_CHROME=false
+BROWSER_CDP_URL=http://localhost:9222
+
+# 3. 서버 시작
+uv run python main.py --serve --port 8765
+```
+
+### 왜 `use_system_chrome=true`가 안 되는가
+
+Chrome은 프로필 디렉토리를 잠금(lock)한다. 사용자가 Default 프로필로 Chrome을 이미 띄운 상태에서 browser-use가 같은 프로필로 연결을 시도하면:
+1. `BrowserSession(user_data_dir=..., profile_directory="Default")` → 프로필 잠금 충돌
+2. `session.start()` 실패 또는 불안정한 연결
+3. 서버의 `_browser_watchdog()`가 `_is_browser_alive()=False` 감지 → 전체 graph task 취소
+4. WebSocket 끊김 → Extension "Disconnected"
+
+### 미해결 과제
+
+사용자 경험을 해치지 않으면서 메인 프로필에 안정적으로 연결하기 위해 아래 방향들을 검토 중입니다:
+1. Extension의 `chrome.debugger` API를 사용하여 Extension 내부에서 직접 브라우저를 제어
+2. browser-use 라이브러리의 CDP 대안 경로 탐색
+3. Chrome 시작 시 별도 프로필로 CDP를 열되, 사용자 프로필 데이터를 복사 또는 심볼릭 링크로 연결
+
+
 ## Phase 5: Browser Extension (WebSocket + Chrome Extension)
 
 ### Architecture
@@ -175,6 +224,10 @@ FastAPI 서버(`surfy/server.py`)가 LangGraph와 Chrome Extension 사이의 브
 ### Running Server Mode
 
 ```bash
+# Chrome CDP 먼저 실행 (필수 — Browser Principle 참조)
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+
+# 서버 시작
 uv run python main.py --serve --port 8765
 ```
 
