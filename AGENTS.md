@@ -163,6 +163,50 @@ Research → Scout → Planner → [PlanApproval] → Actor → Evaluator
 - **Evaluator**: 2-stage check. Structural (URL, text) first → LLM fallback if ambiguous.
 - **graph.py is orchestration only.** No `print()`, `input()`, or direct UI logic. Human interaction must go through a port.
 
+## Phase 5: Browser Extension (WebSocket + Chrome Extension)
+
+### Architecture
+
+FastAPI 서버(`surfy/server.py`)가 LangGraph와 Chrome Extension 사이의 브릿지 역할을 수행합니다.
+- LangGraph의 `interrupt()` 패턴을 사용하여 HITL(Human-In-The-Loop)을 구현하며, 기존의 print/input 방식을 대체합니다.
+- `MemorySaver`를 사용하여 체크포인트 영속성을 유지합니다.
+- 단일 세션, localhost 전용으로 동작합니다.
+
+### Running Server Mode
+
+```bash
+uv run python main.py --serve --port 8765
+```
+
+### Extension Build & Load
+
+```bash
+cd extension && npm install && npm run build
+```
+Chrome에서 로드: `chrome://extensions` → 개발자 모드 → 압축해제된 확장 프로그램을 로드합니다 → `extension/dist` 디렉토리 선택
+
+### WebSocket Protocol
+
+| Type | Direction | Description |
+|------|-----------|-------------|
+| run | C→S | 에이전트 실행 시작 |
+| resume | C→S | interrupt에 대한 사용자 응답 |
+| chat | C→S | 실행 중 메시지 큐잉 |
+| cancel | C→S | 실행 중인 태스크 취소 |
+| node_start/node_end | S→C | 노드 생명주기 이벤트 |
+| state_update | S→C | 상태 변경 알림 |
+| interrupt | S→C | 사용자 개입 필요 알림 |
+| dom_highlight | S→C | DOM 하이라이트 토글 |
+| connected | S→C | 연결 수립 및 초기 상태 전송 |
+| heartbeat | Both | 연결 유지용 하트비트 |
+
+### New Files
+
+- `surfy/server.py` — FastAPI WebSocket 서버
+- `surfy/state.py` — `user_feedback` 필드가 포함된 AgentState
+- `surfy/domain/models/messages.py` — WebSocket 메시지 프로토콜 모델
+- `extension/` — Chrome Extension MV3 (React + Tailwind + Vite)
+
 ## Observability (LangSmith + LangGraph Studio)
 
 ### LangSmith (트레이싱)
