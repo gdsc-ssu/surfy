@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Surfy",
+  "version": "0.1.0",
+  "description": "Surfy Chrome Extension",
+  "permissions": ["sidePanel", "offscreen", "activeTab", "scripting"],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}
