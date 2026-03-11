@@ -28,6 +28,7 @@ async function setupOffscreenDocument() {
   // @ts-ignore
   await chrome.offscreen.createDocument({
     url: OFFSCREEN_DOCUMENT_PATH,
+    // @ts-ignore
     reasons: ["WEB_SOCKET"],
     justification: "WebSocket connection to Surfy server",
   });
@@ -47,18 +48,19 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
   // Messages from offscreen -> forward to Side Panel
   if (msg.source === "offscreen") {
     chrome.runtime.sendMessage({
-      source: "background",
-      ...msg
-    });
+      ...msg,
+      source: "background"
+    }).catch(() => { /* side panel not open */ });
     return;
   }
 
-  // Messages from Side Panel -> forward to offscreen
   if (msg.source === "sidepanel") {
-    chrome.runtime.sendMessage({
-      target: "offscreen",
-      payload: msg.payload
-    } as ToOffscreenMessage);
+    setupOffscreenDocument().then(() => {
+      chrome.runtime.sendMessage({
+        target: "offscreen",
+        payload: msg.payload
+      } as ToOffscreenMessage).catch(() => { /* offscreen not ready */ });
+    }).catch(() => { /* offscreen document creation failed */ });
     return;
   }
 });
