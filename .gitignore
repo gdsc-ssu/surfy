@@ -29,3 +29,6 @@ graph.png
 # Tool state (oh-my-opencode, sisyphus)
 .opencode/
 .sisyphus/
+
+# LangGraph Studio runtime artifacts
+.langgraph_api/

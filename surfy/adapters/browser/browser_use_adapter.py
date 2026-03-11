@@ -103,5 +103,9 @@ class BrowserUseAdapter(BrowserPort):
         assert self._last_state is not None
         return text in self._last_state.dom_state.llm_representation()
 
+    def get_session(self) -> BrowserSession:
+        """browser-use Agent에 공유할 BrowserSession 반환."""
+        return self._session
+
     async def close(self) -> None:
         await self._session.stop()
