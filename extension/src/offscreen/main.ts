@@ -28,10 +28,12 @@ const WS_URL = "ws://localhost:8765/ws";
 const HEARTBEAT_INTERVAL = 30000;
 const INITIAL_RECONNECT_DELAY = 1000;
 const MAX_RECONNECT_DELAY = 30000;
+const MAX_PENDING_MESSAGES = 50;
 
 let socket: WebSocket | null = null;
 let reconnectDelay = INITIAL_RECONNECT_DELAY;
 let heartbeatTimer: number | null = null;
+const pendingMessages: string[] = [];
 
 function connect() {
   console.log(`Connecting to Surfy server at ${WS_URL}...`);
@@ -42,6 +44,10 @@ function connect() {
     reconnectDelay = INITIAL_RECONNECT_DELAY;
     sendUpdateToServiceWorker(true);
     startHeartbeat();
+
+    while (pendingMessages.length > 0) {
+      socket!.send(pendingMessages.shift()!);
+    }
   };
 
   socket.onmessage = (event) => {
@@ -50,9 +56,9 @@ function connect() {
       chrome.runtime.sendMessage({
         source: "offscreen",
         ...parsedMessage
-      });
-    } catch (error) {
-      console.error("Failed to parse WebSocket message:", error);
+      }).catch(() => { /* no receiver — side panel closed */ });
+    } catch {
+      console.warn("Failed to parse WebSocket message");
     }
   };
 
@@ -63,8 +69,8 @@ function connect() {
     scheduleReconnect();
   };
 
-  socket.onerror = (error) => {
-    console.error("WebSocket error:", error);
+  socket.onerror = () => {
+    console.warn("WebSocket connection error — will reconnect");
     socket?.close();
   };
 }
@@ -96,13 +102,32 @@ function sendUpdateToServiceWorker(connected: boolean) {
     source: "offscreen",
     type: "ws_status",
     connected
-  } as OffscreenMessage);
+  } as OffscreenMessage).catch(() => { /* side panel not open */ });
 }
 
 // Listen for messages from Service Worker
 chrome.runtime.onMessage.addListener((msg: ToOffscreenMessage) => {
-  if (msg.target === "offscreen" && socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(msg.payload));
+  if (msg.target !== "offscreen") return;
+  
+  if (msg.payload?.type === "reconnect") {
+    console.log("Manual reconnect requested");
+    if (socket) {
+      socket.close();
+    }
+    reconnectDelay = INITIAL_RECONNECT_DELAY;
+    connect();
+    return;
+  }
+  
+  const serialized = JSON.stringify(msg.payload);
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(serialized);
+  } else {
+    if (pendingMessages.length < MAX_PENDING_MESSAGES) {
+      pendingMessages.push(serialized);
+    } else {
+      console.warn("Pending message queue full — dropping message");
+    }
   }
 });
 
