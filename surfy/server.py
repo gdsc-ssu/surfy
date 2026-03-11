@@ -81,6 +81,7 @@ class SessionStore:
     runtime: ServerRuntime | None = None
     graph_task: asyncio.Task[None] | None = None
     current_state: dict[str, Any] | None = None
+    chat_queue: list[str] = field(default_factory=list)
     last_activity_at: float = 0.0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -130,6 +131,7 @@ def _initial_state(command: str) -> AgentState:
         "completed_tasks": [],
         "last_page_state": None,
         "plan_approved": False,
+        "user_feedback": None,
         "done": False,
         "error": None,
     }
@@ -263,6 +265,9 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
             tasks = getattr(snapshot, "tasks", [])
             if tasks and getattr(tasks[0], "interrupts", []):
                 payload = _to_plain(tasks[0].interrupts[0].value)
+                if _SESSION.chat_queue:
+                    payload["queued_messages"] = list(_SESSION.chat_queue)
+                    _SESSION.chat_queue.clear()
                 await _send_message(
                     InterruptMessage(
                         data=InterruptMessageData(
@@ -286,6 +291,7 @@ async def _start_run(command: str) -> None:
         return
 
     _SESSION.current_state = _to_plain(_initial_state(command))
+    _SESSION.chat_queue.clear()
     _ensure_asyncio_create_task_compat()
     _SESSION.graph_task = asyncio.create_task(_handle_graph_stream(_initial_state(command)))
 
@@ -357,7 +363,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             elif isinstance(message, HeartbeatMessage):
                 await _send_message(HeartbeatMessage())
             elif isinstance(message, ChatMessage):
-                await _send_message(ErrorMessage(data=ErrorMessageData(message="Chat is not supported", node=None)))
+                _SESSION.chat_queue.append(message.data.message)
     except WebSocketDisconnect:
         pass
     finally:

@@ -70,6 +70,31 @@ def compile_graph(
 
     async def planner_node(state: AgentState) -> dict[str, object]:
         plan = state["plan"]
+
+        user_feedback = state.get("user_feedback")
+        if user_feedback and plan is not None:
+            failed_task = plan.tasks[0] if plan.tasks else Task(description="")
+            replanned = await planner.replan(plan, failed_task, user_feedback)
+            replanned.anchor = plan.anchor
+            if not replanned.tasks:
+                return {
+                    "plan": replanned,
+                    "done": True,
+                    "retry_count": 0,
+                    "current_task_idx": 0,
+                    "eval_result": None,
+                    "user_feedback": None,
+                }
+            return {
+                "plan": replanned,
+                "current_task_idx": 0,
+                "retry_count": 0,
+                "eval_result": None,
+                "error": None,
+                "plan_approved": False,
+                "user_feedback": None,
+            }
+
         if plan is None:
             new_plan = await planner.create_plan(
                 state["command"],
@@ -177,9 +202,14 @@ def compile_graph(
                 "route_map": route_map.model_dump() if route_map else None,
             }
         )
+
+        modification = result.get("modification")
+        if modification:
+            return {"user_feedback": modification, "plan_approved": False}
+
         if not result.get("approved", False):
             return {"done": True}
-        return {"plan_approved": True}
+        return {"plan_approved": True, "user_feedback": None}
 
     def human_gateway_node(state: AgentState) -> dict[str, object]:
         eval_result = state.get("eval_result")
@@ -222,9 +252,11 @@ def compile_graph(
             return "plan_approval"
         return "actor"
 
-    def route_after_approval(state: AgentState) -> Literal["actor", "END"]:
+    def route_after_approval(state: AgentState) -> Literal["actor", "planner", "END"]:
         if state["done"]:
             return "END"
+        if state.get("user_feedback"):
+            return "planner"
         return "actor"
 
     def route_after_evaluator(
@@ -286,6 +318,7 @@ def compile_graph(
         route_after_approval,
         {
             "actor": "actor",
+            "planner": "planner",
             "END": END,
         },
     )

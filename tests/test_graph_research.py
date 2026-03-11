@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from surfy.domain.models import RouteMap, RouteStep, SuccessCriteria, Task
 from surfy.domain.models.plan import Plan
@@ -24,6 +25,7 @@ def _initial_state(command: str) -> dict:
         "completed_tasks": [],
         "last_page_state": None,
         "plan_approved": False,
+        "user_feedback": None,
         "research_result": None,
         "done": False,
         "error": None,
@@ -32,7 +34,7 @@ def _initial_state(command: str) -> dict:
 
 def _build_graph(researcher):
     scout = MagicMock()
-    scout.scout = AsyncMock(return_value=MagicMock())
+    scout.scout = AsyncMock(return_value=RouteMap(steps=[], final_url="https://example.com", scout_summary="요약"))
 
     planner = MagicMock()
     planner.create_plan = AsyncMock(return_value=Plan(anchor="a", tasks=[], anchor_rationale="r"))
@@ -153,3 +155,66 @@ async def test_plan_approval_interrupt_payload_contains_plan_and_route_map():
     assert interrupt_payload["type"] == "plan_approval"
     assert interrupt_payload["plan"] == plan.model_dump()
     assert interrupt_payload["route_map"] == route_map.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_plan_modification_resume_triggers_replan_and_new_approval_interrupt():
+    researcher = MagicMock()
+    researcher.research = AsyncMock(
+        return_value=ResearchResult(summary="요약", sources=["https://a.com"], raw_results=[])
+    )
+
+    scout = MagicMock()
+    scout.scout = AsyncMock(return_value=RouteMap(steps=[], final_url="https://example.com", scout_summary="요약"))
+
+    planner = MagicMock()
+    initial_plan = Plan(
+        anchor="결과 확인",
+        anchor_rationale="초기 계획",
+        tasks=[Task(description="초기 태스크", success_criteria=SuccessCriteria(text_visible="초기"))],
+    )
+    replanned = Plan(
+        anchor="결과 확인",
+        anchor_rationale="수정 반영",
+        tasks=[Task(description="수정된 태스크", success_criteria=SuccessCriteria(text_visible="수정"))],
+    )
+    planner.create_plan = AsyncMock(return_value=initial_plan)
+    planner.next_tasks = AsyncMock()
+    planner.replan = AsyncMock(return_value=replanned)
+
+    actor = MagicMock()
+    evaluator = MagicMock()
+    graph = compile_graph(
+        scout=scout,
+        planner=planner,
+        actor=actor,
+        evaluator=evaluator,
+        researcher=researcher,
+        checkpointer=MemorySaver(),
+    )
+
+    config = cast(RunnableConfig, {"configurable": {"thread_id": "plan_modification_replan"}})
+    async for _ in graph.astream(_initial_state("복잡한 검색 요청"), config):
+        pass
+
+    before_resume = await graph.aget_state(config)
+    assert before_resume.next == ("plan_approval",)
+
+    modification = "검색 대신 뉴스 탭으로 바로 가도록 바꿔줘"
+    resume_events: list[dict] = []
+    async for event in graph.astream(Command(resume={"approved": False, "modification": modification}), config):
+        resume_events.append(event)
+
+    plan_approval_updates = [
+        updates
+        for event in resume_events
+        for node_name, updates in event.items()
+        if node_name == "plan_approval"
+    ]
+    assert any(update.get("user_feedback") == modification for update in plan_approval_updates)
+
+    planner.replan.assert_awaited_once()
+    assert planner.replan.await_args.args[2] == modification
+
+    after_resume = await graph.aget_state(config)
+    assert after_resume.next == ("plan_approval",)
