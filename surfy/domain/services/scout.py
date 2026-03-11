@@ -1,59 +1,41 @@
+from __future__ import annotations
+
 import logging
 
-from surfy.domain.models import ActionType, HistoryEntry, RouteMap, RouteStep, Task
-from surfy.domain.ports import BrowserPort, LLMPort
+from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter, history_to_route_map
+from surfy.domain.models.research import ResearchResult
+from surfy.domain.models.route import RouteMap
 
 logger = logging.getLogger(__name__)
 
 
 class ScoutService:
-    def __init__(self, browser: BrowserPort, llm: LLMPort):
-        self._browser = browser
-        self._llm = llm
+    def __init__(self, agent_adapter: BrowserUseAgentAdapter):
+        self._agent_adapter = agent_adapter
 
-    async def scout(self, command: str, max_steps: int = 20) -> RouteMap:
-        steps: list[RouteStep] = []
-        history: list[HistoryEntry] = []
-        task = Task(description=f"정찰: {command}")
+    async def scout(
+        self,
+        command: str,
+        max_steps: int = 20,
+        research_result: ResearchResult | None = None,
+    ) -> RouteMap:
+        """browser-use Agent로 정찰 탐색을 수행하고 RouteMap을 반환한다."""
+        try:
+            task_prompt = f"정찰: {command}"
+            if research_result and research_result.sources:
+                urls_text = "\n".join(f"- {url}" for url in research_result.sources[:5])
+                task_prompt += f"\n\n참고 URL:\n{urls_text}"
 
-        for step in range(max_steps):
-            page_state = await self._browser.get_page_state()
-            output = await self._llm.scout(task, page_state, history)
-
-            logger.info("Scout step %d: %s", step + 1, output.action_type.value)
-
-            route_step = RouteStep(
-                url=page_state.url,
-                title=page_state.title,
-                action_taken=f"{output.action_type.value}({output.target_id or output.value or ''})",
-                observed_elements=page_state.dom_text[:500].split("\n")[:10],
-                notes=output.memory or output.thinking,
+            history = await self._agent_adapter.explore(
+                task=task_prompt, max_steps=max_steps
             )
-            steps.append(route_step)
-
-            if output.action_type == ActionType.DONE:
-                logger.info("Scout completed. RouteMap created with %d steps.", len(steps))
-                return RouteMap(
-                    steps=steps,
-                    final_url=page_state.url,
-                    scout_summary=output.value or "Scout completed",
-                )
-
-            if output.action_type == ActionType.STUCK:
-                logger.info("Scout stuck. Partial RouteMap created with %d steps.", len(steps))
-                return RouteMap(
-                    steps=steps,
-                    final_url=page_state.url,
-                    scout_summary=f"Scout stuck: {output.value}",
-                )
-
-            action = output.to_browser_action()
-            result = await self._browser.execute_action(action)
-            history.append(HistoryEntry(action=output, result=result, step=step + 1))
-
-        logger.info("Scout max steps reached. RouteMap created with %d steps.", len(steps))
-        return RouteMap(
-            steps=steps,
-            final_url=steps[-1].url if steps else "",
-            scout_summary="Max steps reached",
-        )
+            route_map = history_to_route_map(history)
+            logger.info(
+                "Scout completed: %d steps, final_url=%s",
+                len(route_map.steps),
+                route_map.final_url,
+            )
+            return route_map
+        except Exception as e:
+            logger.warning("Scout Agent failed: %s. Returning empty RouteMap.", e)
+            return RouteMap(steps=[], final_url="", scout_summary=f"Scout failed: {e}")

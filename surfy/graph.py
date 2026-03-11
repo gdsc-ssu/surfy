@@ -6,7 +6,8 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from surfy.domain.models import ActionType, ActorOutput, EvalResult, HistoryEntry, RouteMap, Task
-from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ScoutService
+from surfy.domain.models.research import ResearchResult
+from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ResearcherService, ScoutService
 from surfy.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -29,16 +30,38 @@ def _is_repeated_plan(next_tasks: list[Task], completed_tasks: list[Task]) -> bo
     return all(task.description.strip() in completed_descriptions for task in next_tasks)
 
 
+def _is_simple_navigation_command(command: str) -> bool:
+    normalized = command.strip()
+    if "http://" in normalized or "https://" in normalized:
+        return True
+    return len(normalized) < 10
+
+
 def compile_graph(
     scout: ScoutService,
     planner: PlannerService,
     actor: ActorService,
     evaluator: EvaluatorService,
+    researcher: ResearcherService | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
+    async def research_node(state: AgentState) -> dict[str, object]:
+        if _is_simple_navigation_command(state["command"]):
+            return {"research_result": None}
+        if researcher is None:
+            return {"research_result": None}
+        try:
+            result: ResearchResult = await researcher.research(state["command"])
+            return {"research_result": result}
+        except Exception as e:
+            logger.warning("Research failed: %s. Skipping.", e)
+            return {"research_result": None}
+
     async def scout_node(state: AgentState) -> dict[str, object]:
         try:
-            route_map: RouteMap = await scout.scout(state["command"])
+            route_map: RouteMap = await scout.scout(
+                state["command"], research_result=state.get("research_result")
+            )
             return {"route_map": route_map}
         except Exception as e:
             logger.warning("Scout failed: %s. Falling back to blind planning.", e)
@@ -47,7 +70,11 @@ def compile_graph(
     async def planner_node(state: AgentState) -> dict[str, object]:
         plan = state["plan"]
         if plan is None:
-            new_plan = await planner.create_plan(state["command"], route_map=state["route_map"])
+            new_plan = await planner.create_plan(
+                state["command"],
+                route_map=state.get("route_map"),
+                research_result=state.get("research_result"),
+            )
             if not new_plan.tasks:
                 return {"plan": new_plan, "done": True, "retry_count": 0, "current_task_idx": 0, "eval_result": None}
             return {"plan": new_plan, "current_task_idx": 0, "retry_count": 0, "eval_result": None, "error": None}
@@ -69,7 +96,7 @@ def compile_graph(
             replanned = await planner.replan(plan, failed_task, eval_result.reason)
             if not replanned.tasks:
                 return {"plan": replanned, "done": True, "retry_count": 0, "current_task_idx": 0, "eval_result": None}
-            return {"plan": replanned, "current_task_idx": 0, "retry_count": 0, "eval_result": None, "error": None}
+            return {"plan": replanned, "current_task_idx": 0, "eval_result": None, "error": None}
 
         if state["current_task_idx"] >= len(plan.tasks):
             next_plan = await planner.next_tasks(plan, state["completed_tasks"])
@@ -84,7 +111,14 @@ def compile_graph(
                     "retry_count": 0,
                     "eval_result": None,
                 }
-            return {"plan": next_plan, "current_task_idx": 0, "retry_count": 0, "eval_result": None, "error": None}
+            return {
+                "plan": next_plan,
+                "current_task_idx": 0,
+                "retry_count": 0,
+                "eval_result": None,
+                "error": None,
+                "plan_approved": False,
+            }
 
         return {}
 
@@ -129,6 +163,68 @@ def compile_graph(
             "error": eval_result.reason,
         }
 
+    def plan_approval_node(state: AgentState) -> dict[str, object]:
+        plan = state["plan"]
+        if plan is None:
+            return {"done": True}
+
+        def to_plain_url(url: str | None) -> str:
+            if not url:
+                return "자동 탐색"
+            if "naver.com" in url:
+                if "search.naver.com" in url:
+                    return "네이버 검색 페이지"
+                return "네이버"
+            if "google.com" in url:
+                if "google.com/search" in url:
+                    return "구글 검색 페이지"
+                return "구글"
+            if "github.com" in url:
+                return "깃허브"
+            from urllib.parse import urlparse
+            domain = urlparse(url).netloc
+            return domain or url
+
+        print("\n" + "═" * 50)
+        print(f"📋 {plan.anchor}를 하겠습니다.")
+        print(f"\n💡 이유: {plan.anchor_rationale}")
+
+        route_map = state.get("route_map")
+        if route_map and route_map.steps:
+            print("\n🔍 Scout이 찾은 경로:")
+            for i, step in enumerate(route_map.steps, 1):
+                print(f"    {i}. {step.action_taken} → {to_plain_url(step.url)}")
+            print(f"    최종: {to_plain_url(route_map.final_url)}")
+
+        print(f"\n📝 단계 ({len(plan.tasks)}개):")
+        unique_urls = set()
+        for i, task in enumerate(plan.tasks, 1):
+            print(f"    {i}. {task.description}")
+            print(f"       🎯 이동할 곳: {to_plain_url(task.target_url)}")
+            if task.target_url:
+                unique_urls.add(to_plain_url(task.target_url))
+            
+            criteria = task.success_criteria
+            criteria_parts = []
+            if criteria.url_contains:
+                criteria_parts.append(f"주소에 '{criteria.url_contains}' 포함")
+            if criteria.text_visible:
+                criteria_parts.append(f"화면에 '{criteria.text_visible}' 보임")
+            if criteria.description:
+                criteria_parts.append(criteria.description)
+            
+            if criteria_parts:
+                print(f"       ✅ 완료 확인: {' / '.join(criteria_parts)}")
+
+        if unique_urls:
+            print(f"\n⚠️ 방문할 사이트: {', '.join(sorted(unique_urls))}")
+        print("═" * 50)
+
+        user_input = input("\n승인하시겠습니까? (Enter=승인, exit=종료): ").strip()
+        if user_input.lower() == "exit":
+            return {"done": True}
+        return {"plan_approved": True}
+
     def human_gateway_node(state: AgentState) -> dict[str, object]:
         _ = state
         user_input = input("재시도 한도를 초과했습니다. 종료하려면 'exit', 계속하려면 Enter: ").strip()
@@ -136,15 +232,35 @@ def compile_graph(
             return {"done": True}
         return {"retry_count": 0}
 
-    def route_after_planner(state: AgentState) -> Literal["actor", "END"]:
+    def completion_check_node(state: AgentState) -> dict[str, object]:
+        plan = state["plan"]
+        anchor = plan.anchor if plan else "작업"
+        completed_count = len(state["completed_tasks"])
+
+        print(f"\n✅ {anchor} — {completed_count}개 태스크 완료.")
+        user_input = input("추가 작업이 필요하면 Enter, 종료하려면 'exit': ").strip()
+        if user_input.lower() == "exit":
+            return {"done": True}
+        return {}
+
+    def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "END"]:
         if state["done"]:
             return "END"
         task = _current_task(state)
         if task is None:
             return "END"
+        if not state["plan_approved"]:
+            return "plan_approval"
         return "actor"
 
-    def route_after_evaluator(state: AgentState) -> Literal["planner", "actor", "human_gateway", "END"]:
+    def route_after_approval(state: AgentState) -> Literal["actor", "END"]:
+        if state["done"]:
+            return "END"
+        return "actor"
+
+    def route_after_evaluator(
+        state: AgentState,
+    ) -> Literal["planner", "actor", "human_gateway", "completion_check", "END"]:
         if state["done"]:
             return "END"
 
@@ -156,7 +272,7 @@ def compile_graph(
             task = _current_task(state)
             if task is not None:
                 return "actor"
-            return "planner"
+            return "completion_check"
 
         if state["retry_count"] <= state["max_retries"]:
             return "planner"
@@ -167,20 +283,38 @@ def compile_graph(
             return "END"
         return "planner"
 
+    def route_after_completion(state: AgentState) -> Literal["planner", "END"]:
+        if state["done"]:
+            return "END"
+        return "planner"
+
     graph_builder = StateGraph(AgentState)
+    graph_builder.add_node("research", research_node)
     graph_builder.add_node("scout", scout_node)
     graph_builder.add_node("planner", planner_node)
+    graph_builder.add_node("plan_approval", plan_approval_node)
     graph_builder.add_node("actor", actor_node)
     graph_builder.add_node("evaluator", evaluator_node)
     graph_builder.add_node("human_gateway", human_gateway_node)
+    graph_builder.add_node("completion_check", completion_check_node)
 
-    graph_builder.set_entry_point("scout")
+    graph_builder.set_entry_point("research")
 
+    graph_builder.add_edge("research", "scout")
     graph_builder.add_edge("scout", "planner")
 
     graph_builder.add_conditional_edges(
         "planner",
         route_after_planner,
+        {
+            "plan_approval": "plan_approval",
+            "actor": "actor",
+            "END": END,
+        },
+    )
+    graph_builder.add_conditional_edges(
+        "plan_approval",
+        route_after_approval,
         {
             "actor": "actor",
             "END": END,
@@ -194,12 +328,21 @@ def compile_graph(
             "planner": "planner",
             "actor": "actor",
             "human_gateway": "human_gateway",
+            "completion_check": "completion_check",
             "END": END,
         },
     )
     graph_builder.add_conditional_edges(
         "human_gateway",
         route_after_human,
+        {
+            "planner": "planner",
+            "END": END,
+        },
+    )
+    graph_builder.add_conditional_edges(
+        "completion_check",
+        route_after_completion,
         {
             "planner": "planner",
             "END": END,

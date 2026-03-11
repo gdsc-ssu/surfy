@@ -14,3 +14,6 @@ class Task(BaseModel):
 
     success_criteria: SuccessCriteria = Field(default_factory=SuccessCriteria)
     """완료 조건 — Evaluator가 이 기준으로 성공 여부 판정."""
+
+    target_url: str | None = None
+    """Scout이 발견한 목표 URL — Actor가 GO_TO_URL로 직접 이동할 수 있다."""

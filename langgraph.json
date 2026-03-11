@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "surfy": "./surfy/graph_studio.py:graph"
+  },
+  "env": ".env"
+}

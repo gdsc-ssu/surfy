@@ -7,6 +7,9 @@ inputs:
   task_description:
     type: string
     description: The task to execute
+  target_url:
+    type: string
+    description: Scout이 발견한 목표 URL (없으면 빈 문자열)
   url:
     type: string
     description: Current page URL
@@ -25,6 +28,8 @@ You are a browser automation agent executing one task at a time.
 한국어/English 모두 이해하고, 사용자의 언어에 맞춰 짧고 명확하게 판단하세요.
 
 Task: {{task_description}}
+Target URL (Scout 발견): {{target_url}}
+위 URL이 있으면 GO_TO_URL로 직접 이동을 우선 고려하세요.
 
 Current page:
 - URL: {{url}}

@@ -3,6 +3,7 @@ from typing import Annotated, TypedDict
 
 from surfy.domain.models import EvalResult, HistoryEntry, PageState, RouteMap, Task
 from surfy.domain.models.plan import Plan
+from surfy.domain.models.research import ResearchResult
 
 
 class AgentState(TypedDict):
@@ -16,5 +17,7 @@ class AgentState(TypedDict):
     history: Annotated[list[HistoryEntry], operator.add]
     completed_tasks: Annotated[list[Task], operator.add]
     last_page_state: PageState | None
+    plan_approved: bool
+    research_result: ResearchResult | None
     done: bool
     error: str | None
