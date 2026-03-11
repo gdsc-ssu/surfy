@@ -4,7 +4,6 @@ import inspect
 import logging
 from typing import cast
 
-from browser_use import BrowserSession
 from browser_use.llm import ChatAnthropic as BrowserUseChatAnthropic
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
@@ -38,14 +37,12 @@ async def run(command: str) -> AgentState:
     _ensure_asyncio_create_task_compat()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    browser = await BrowserUseAdapter.create()
+    browser = await BrowserUseAdapter.create(use_system_chrome=True)
+    shared_session = browser.get_session()
     llm = AnthropicAdapter(use_vision=True, model_name="claude-sonnet-4-20250514")
     agent_llm = BrowserUseChatAnthropic(model="claude-sonnet-4-20250514")
 
-    agent_session = BrowserSession(headless=False, disable_security=True)
-    await agent_session.start()
-
-    agent_adapter = BrowserUseAgentAdapter(session=agent_session, llm=agent_llm)
+    agent_adapter = BrowserUseAgentAdapter(session=shared_session, llm=agent_llm)
     researcher = ResearcherService(research_port=DdgsSearchAdapter())
 
     planner = PlannerService(llm=llm)
@@ -146,7 +143,6 @@ async def run(command: str) -> AgentState:
         logger.info("작업 완료. done=%s, error=%s", final_state.get("done"), final_state.get("error"))
         return cast(AgentState, final_state)
     finally:
-        await agent_session.stop()
         await browser.close()
 
 
