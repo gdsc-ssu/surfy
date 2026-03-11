@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import inspect
 import logging
@@ -7,6 +8,7 @@ from typing import cast
 from browser_use import BrowserSession
 from browser_use.llm import ChatAnthropic as BrowserUseChatAnthropic
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
@@ -81,15 +83,64 @@ async def run(command: str) -> AgentState:
 
     logger = logging.getLogger("surfy.run")
     final_state = initial_state
+    config = {"configurable": {"thread_id": "surfy-cli"}}
 
     try:
-        async for event in graph.astream(
-            initial_state,
-            config={"configurable": {"thread_id": "surfy-default"}},
-        ):
-            for node_name, updates in event.items():
-                _log_node_result(logger, node_name, updates)
-                final_state = {**final_state, **updates}
+        input_payload: AgentState | Command = initial_state
+        while True:
+            async for event in graph.astream(input_payload, config=config):  # type: ignore
+                for node_name, updates in event.items():
+                    _log_node_result(logger, node_name, updates)
+                    final_state = {**final_state, **updates}
+
+            state = await graph.aget_state(config=config)  # type: ignore
+            if not state.next:
+                break
+
+            if state.tasks and state.tasks[0].interrupts:
+                interrupt = state.tasks[0].interrupts[0]
+                payload = interrupt.value
+                interrupt_type = payload.get("type")
+
+                if interrupt_type == "plan_approval":
+                    plan = payload.get("plan")
+                    logger.info("\n" + "=" * 20 + " [PLAN APPROVAL] " + "=" * 20)
+                    logger.info("Anchor: %s", plan.get("anchor"))
+                    for i, task in enumerate(plan.get("tasks", [])):
+                        logger.info("  %d. %s", i + 1, task.get("description"))
+                    logger.info("=" * 57 + "\n")
+
+                    ans = input("승인하시겠습니까? (y/n): ").strip().lower()
+                    input_payload = Command(resume={"approved": ans == "y"})
+
+                elif interrupt_type == "human_gateway":
+                    failed_task = payload.get("failed_task")
+                    reason = payload.get("reason")
+                    logger.info("\n" + "!" * 20 + " [TASK FAILED] " + "!" * 20)
+                    logger.info("Task: %s", failed_task)
+                    logger.info("Reason: %s", reason)
+                    logger.info("!" * 55 + "\n")
+
+                    ans = input("재시도하시겠습니까? (y/n): ").strip().lower()
+                    action = "retry" if ans == "y" else "exit"
+                    input_payload = Command(resume={"action": action})
+
+                elif interrupt_type == "completion_check":
+                    anchor = payload.get("anchor")
+                    completed_count = payload.get("completed_count")
+                    logger.info("\n" + "?" * 20 + " [COMPLETION CHECK] " + "?" * 20)
+                    logger.info("Anchor: %s", anchor)
+                    logger.info("Completed Tasks: %d", completed_count)
+                    logger.info("?" * 55 + "\n")
+
+                    ans = input("계속 진행하시겠습니까? (y/n): ").strip().lower()
+                    action = "continue" if ans == "y" else "exit"
+                    input_payload = Command(resume={"action": action})
+                else:
+                    logger.warning("Unknown interrupt type: %s", interrupt_type)
+                    break
+            else:
+                break
 
         logger.info("=" * 60)
         logger.info("작업 완료. done=%s, error=%s", final_state.get("done"), final_state.get("error"))
@@ -166,10 +217,21 @@ def _log_node_result(logger: logging.Logger, node_name: str, updates: dict) -> N
             )
 
 
-def main(command: str) -> None:
-    asyncio.run(run(command))
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Surfy: Hierarchical Browser Automation Agent")
+    parser.add_argument("command", nargs="?", help="Command to execute in CLI mode")
+    parser.add_argument("--serve", action="store_true", help="Start as a FastAPI server")
+    parser.add_argument("--port", type=int, default=8765, help="Port for the server (default: 8765)")
+
+    args = parser.parse_args()
+
+    if args.serve:
+        import uvicorn
+        uvicorn.run("surfy.server:app", host="0.0.0.0", port=args.port)
+    else:
+        cmd = args.command or input("명령을 입력하세요: ")
+        asyncio.run(run(cmd))
 
 
 if __name__ == "__main__":
-    user_command = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else input("명령을 입력하세요: ")
-    main(user_command)
+    main()
