@@ -8,6 +8,22 @@ import { ProgressBar } from "./components/ProgressBar";
 import { NodeStatusBar } from "./components/NodeStatusBar";
 import { ChatPanel } from "./components/ChatPanel";
 import { CancelButton } from "./components/CancelButton";
+import { ActivityLog } from "./components/ActivityLog";
+
+const NODE_INFO: Record<string, { label: string; icon: string }> = {
+  research: { label: "Researching topic", icon: "🔎" },
+  scout: { label: "Scouting website", icon: "🗺️" },
+  planner: { label: "Creating plan", icon: "📋" },
+  plan_approval: { label: "Waiting for approval", icon: "✋" },
+  actor: { label: "Executing task", icon: "🎬" },
+  evaluator: { label: "Evaluating result", icon: "✅" },
+  completion_check: { label: "Checking completion", icon: "🏁" },
+  human_gateway: { label: "Waiting for input", icon: "💬" },
+};
+
+function getNodeInfo(node: string) {
+  return NODE_INFO[node] || { label: node, icon: "⚙️" };
+}
 
 const initialState: AppState = {
   connected: false,
@@ -21,17 +37,22 @@ const initialState: AppState = {
   currentNode: null,
   interrupt: null,
   messages: [],
+  activityLog: [],
 };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "WS_STATUS":
-      return { ...state, connected: action.connected };
+      if (!action.connected) {
+        // Disconnected — reset running state so inputs aren't stuck disabled
+        return { ...state, connected: false, running: false, currentNode: null };
+      }
+      return { ...state, connected: true };
     case "CONNECTED":
       return {
         ...state,
         connected: true,
-        running: action.state?.running || false,
+        running: action.running,
         plan: action.state?.plan || null,
         routeMap: action.state?.route_map || null,
         currentTaskIdx: action.state?.current_task_idx || 0,
@@ -49,10 +70,32 @@ function reducer(state: AppState, action: Action): AppState {
         error: action.data.error,
         running: !action.data.done && !action.data.error,
       };
-    case "NODE_START":
-      return { ...state, currentNode: action.node };
-    case "NODE_END":
-      return { ...state, currentNode: null };
+    case "NODE_START": {
+      const info = getNodeInfo(action.node);
+      return {
+        ...state,
+        currentNode: action.node,
+        activityLog: [
+          ...state.activityLog,
+          {
+            node: action.node,
+            label: info.label,
+            icon: info.icon,
+            startedAt: Date.now(),
+            endedAt: null,
+            status: "running" as const,
+          },
+        ],
+      };
+    }
+    case "NODE_END": {
+      const updatedLog = state.activityLog.map((entry, idx) =>
+        idx === state.activityLog.length - 1 && entry.status === "running"
+          ? { ...entry, endedAt: Date.now(), status: "done" as const }
+          : entry
+      );
+      return { ...state, currentNode: null, activityLog: updatedLog };
+    }
     case "INTERRUPT":
       return { ...state, interrupt: action.data };
     case "CANCELLED":
@@ -83,6 +126,7 @@ function reducer(state: AppState, action: Action): AppState {
         error: null, 
         done: false, 
         interrupt: null,
+        activityLog: [],
         messages: [
           ...state.messages,
           { sender: "system", text: "Execution started.", timestamp: Date.now() }
@@ -115,7 +159,7 @@ export default function App() {
           dispatch({ type: "WS_STATUS", connected: message.connected || false });
           break;
         case "connected":
-          dispatch({ type: "CONNECTED", state: message.data?.state });
+          dispatch({ type: "CONNECTED", state: message.data?.state, running: message.data?.running || false });
           break;
         case "state_update":
           dispatch({ type: "STATE_UPDATE", data: message.data });
@@ -156,21 +200,9 @@ export default function App() {
     };
   }, []);
 
-  // Intercept run messages to update local state optimistically
-  useEffect(() => {
-    const handleOutgoingMessage = (message: any) => {
-      if (message.source === "sidepanel" && message.payload?.type === "run") {
-        dispatch({ type: "RUN_STARTED" });
-      } else if (message.source === "sidepanel" && message.payload?.type === "resume") {
-        dispatch({ type: "INTERRUPT_RESOLVED" });
-      }
-    };
-    
-    // We can't easily intercept chrome.runtime.sendMessage globally, 
-    // but we can rely on the server's state_update or node_start to update UI.
-    // The CommandInput and InterruptPanel components will send the messages.
-    // We'll just let the server responses drive the state.
-  }, []);
+  const handleRunStarted = () => {
+    dispatch({ type: "RUN_STARTED" });
+  };
 
   const totalTasks = state.plan?.tasks.length || 0;
 
@@ -207,15 +239,22 @@ export default function App() {
     });
   };
 
+  const handleRetry = () => {
+    chrome.runtime.sendMessage({
+      source: "sidepanel",
+      payload: { type: "reconnect" },
+    });
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 font-sans">
       {/* Header */}
       <header className="flex-shrink-0 bg-white border-b border-gray-200 p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold text-blue-600">Surfy</h1>
-          <ConnectionStatus connected={state.connected} />
+          <ConnectionStatus connected={state.connected} onRetry={handleRetry} />
         </div>
-        <CommandInput disabled={!state.connected || state.running} />
+        <CommandInput disabled={!state.connected || state.running} onRun={handleRunStarted} />
       </header>
 
       {/* Main Content */}
@@ -225,6 +264,8 @@ export default function App() {
             <span className="font-bold">Error:</span> {state.error}
           </div>
         )}
+
+        <ActivityLog entries={state.activityLog} />
 
         <PlanView
           plan={state.plan}

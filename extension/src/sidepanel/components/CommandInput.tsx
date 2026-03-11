@@ -2,13 +2,16 @@ import React, { useState } from "react";
 
 interface CommandInputProps {
   disabled: boolean;
+  onRun?: () => void;
 }
 
-export const CommandInput: React.FC<CommandInputProps> = ({ disabled }) => {
+export const CommandInput: React.FC<CommandInputProps> = ({ disabled, onRun }) => {
   const [inputValue, setInputValue] = useState("");
 
   const handleRun = () => {
     if (!inputValue.trim() || disabled) return;
+
+    onRun?.();
 
     chrome.runtime.sendMessage({
       source: "sidepanel",
