@@ -3,9 +3,10 @@ import { InterruptData } from "../types";
 
 interface InterruptPanelProps {
   interrupt: InterruptData;
+  onResolved: () => void;
 }
 
-export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt }) => {
+export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onResolved }) => {
   const handleResume = (value: any) => {
     chrome.runtime.sendMessage({
       source: "sidepanel",
@@ -17,6 +18,7 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt }) => 
         },
       },
     });
+    onResolved();
   };
 
   const renderContent = () => {

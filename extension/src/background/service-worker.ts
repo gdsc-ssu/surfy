@@ -29,7 +29,7 @@ async function setupOffscreenDocument() {
   await chrome.offscreen.createDocument({
     url: OFFSCREEN_DOCUMENT_PATH,
     // @ts-ignore
-    reasons: ["WEB_SOCKET"],
+    reasons: ["WORKERS"],
     justification: "WebSocket connection to Surfy server",
   });
   console.log("Offscreen document created");
