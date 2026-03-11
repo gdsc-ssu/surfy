@@ -22,6 +22,7 @@ from surfy.domain.models import (
     CancelMessage,
     ChatMessage,
     ConnectedMessage,
+    DomHighlightMessage,
     ErrorMessage,
     HeartbeatMessage,
     InterruptMessage,
@@ -34,6 +35,7 @@ from surfy.domain.models import (
 from surfy.domain.models.messages import (
     CancelledMessageData,
     ConnectedMessageData,
+    DomHighlightMessageData,
     ErrorMessageData,
     InterruptMessageData,
     NodeEndMessageData,
@@ -220,7 +222,30 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
                 plain_updates = _to_plain(updates)
 
                 await _send_message(NodeStartMessage(data=NodeStartMessageData(node=node_name)))
+
+                if node_name == "actor":
+                    state = _SESSION.current_state or {}
+                    plan = state.get("plan")
+                    current_idx = state.get("current_task_idx", 0)
+                    task_desc = None
+                    if plan and isinstance(plan, dict):
+                        tasks = plan.get("tasks", [])
+                        if 0 <= current_idx < len(tasks):
+                            task_desc = tasks[current_idx].get("description")
+
+                    await _send_message(
+                        DomHighlightMessage(
+                            data=DomHighlightMessageData(
+                                action_type="task_start",
+                                description=task_desc,
+                            )
+                        )
+                    )
+
                 await _send_message(NodeEndMessage(data=NodeEndMessageData(node=node_name, updates=plain_updates)))
+
+                if node_name == "actor":
+                    await _send_message(DomHighlightMessage(data=DomHighlightMessageData(action_type="task_end")))
 
                 state = _SESSION.current_state or {}
                 state.update(plain_updates)
