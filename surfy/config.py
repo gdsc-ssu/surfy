@@ -12,7 +12,9 @@ class LLMSettings(BaseSettings):
 class BrowserSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BROWSER_", env_file=".env", extra="ignore")
 
-    cdp_url: str = "http://localhost:9222"
+    use_system_chrome: bool = True
+    chrome_profile: str = "Default"
+    cdp_url: str | None = None
 
 
 class Settings(BaseSettings):
