@@ -29,6 +29,9 @@ dev = [
     "ruff>=0.15.1",
 ]
 
+[tool.setuptools.packages.find]
+include = ["surfy*"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 120
