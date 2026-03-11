@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import inspect
 import logging
-import sys
 from typing import cast
 
 from browser_use import BrowserSession
@@ -77,6 +76,7 @@ async def run(command: str) -> AgentState:
         "completed_tasks": [],
         "last_page_state": None,
         "plan_approved": False,
+        "user_feedback": None,
         "done": False,
         "error": None,
     }

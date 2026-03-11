@@ -190,3 +190,32 @@ def test_websocket_run_interrupt_and_resume(reset_server_state, monkeypatch: pyt
             assert resume_types.count("node_start") == 2
             assert resume_types.count("node_end") == 2
             assert resume_types.count("state_update") == 2
+
+
+def test_websocket_chat_is_queued_and_included_in_next_interrupt(
+    reset_server_state,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _ = reset_server_state
+
+    async def fake_runtime() -> server.ServerRuntime:
+        return server.ServerRuntime(graph=_FakeGraph(), browser=_DummyCloser(), agent_session=_DummyStopper())
+
+    monkeypatch.setattr(server, "_get_or_create_runtime", fake_runtime)
+
+    with TestClient(server.app) as client:
+        with client.websocket_connect("/ws") as ws:
+            _ = ws.receive_json()
+
+            ws.send_text(json.dumps({"type": "run", "data": {"command": "do work", "thread_id": "x"}}))
+            ws.send_text(json.dumps({"type": "chat", "data": {"message": "계획을 더 짧게 바꿔줘"}}))
+
+            interrupt = None
+            for _ in range(10):
+                msg = ws.receive_json()
+                if msg["type"] == "interrupt":
+                    interrupt = msg
+                    break
+
+            assert interrupt is not None
+            assert interrupt["data"]["payload"]["queued_messages"] == ["계획을 더 짧게 바꿔줘"]
