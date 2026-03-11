@@ -273,7 +273,12 @@ export default function App() {
           currentTaskIdx={state.currentTaskIdx}
         />
 
-        {state.interrupt && <InterruptPanel interrupt={state.interrupt} />}
+        {state.interrupt && (
+          <InterruptPanel 
+            interrupt={state.interrupt} 
+            onResolved={() => dispatch({ type: "INTERRUPT_RESOLVED" })}
+          />
+        )}
 
         <ChatPanel 
           messages={state.messages} 
