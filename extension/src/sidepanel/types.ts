@@ -54,6 +54,15 @@ export interface ServerMessage {
   connected?: boolean;
 }
 
+export interface ActivityLogEntry {
+  node: string;
+  label: string;
+  icon: string;
+  startedAt: number;
+  endedAt: number | null;
+  status: "running" | "done";
+}
+
 export interface AppState {
   connected: boolean;
   running: boolean;
@@ -66,11 +75,12 @@ export interface AppState {
   currentNode: string | null;
   interrupt: InterruptData | null;
   messages: ChatMessage[];
+  activityLog: ActivityLogEntry[];
 }
 
 export type Action =
   | { type: "WS_STATUS"; connected: boolean }
-  | { type: "CONNECTED"; state: any }
+  | { type: "CONNECTED"; state: any; running: boolean }
   | { type: "STATE_UPDATE"; data: StateUpdateData }
   | { type: "NODE_START"; node: string }
   | { type: "NODE_END"; node: string }
