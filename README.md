@@ -39,6 +39,19 @@ google-chrome --remote-debugging-port=9222
 uv run python main.py "네이버에서 오늘 날씨 검색"
 ```
 
+### 서버 모드 (Chrome Extension 연동)
+
+```bash
+# 1. 서버 시작
+uv run python main.py --serve --port 8765
+
+# 2. Extension 빌드
+cd extension && npm install && npm run build
+
+# 3. Chrome에서 Extension 로드
+# chrome://extensions → 개발자 모드 → 압축해제된 확장 프로그램을 로드합니다 → extension/dist 선택
+```
+
 ### 개발 도구
 
 ```bash
@@ -57,17 +70,20 @@ make check
 Hexagonal Architecture + Hierarchical Agent (Planner → Actor → Evaluator)
 
 ```
-User Command
+User Command (CLI or Extension)
     ↓
 ┌─ LangGraph Outer Loop ──────────────────────┐
 │                                              │
-│  Planner ─→ Actor (ReAct while loop) ─→ Evaluator
-│     ↑                                    │   │
-│     └──── replan / next task ────────────┘   │
+│  Research → Scout → Planner → [Approval] → Actor → Evaluator
+│                       ↑                              │
+│                       └──── replan / next task ──────┘
 │                                              │
 └──────────────────────────────────────────────┘
-    ↓ (목표 달성 or human 개입)
-  Done
+    ↓                          ↑
+  Done              WebSocket (server.py)
+                         ↕
+                  Chrome Extension
+                  (Side Panel + Content Script)
 ```
 
 ### Components
@@ -81,16 +97,25 @@ User Command
 ```
 surfy/
 ├── domain/
-│   ├── models/      # 순수 도메인 모델 (Pydantic)
+│   ├── models/      # 순수 도메인 모델 (Pydantic) + WebSocket 메시지 프로토콜
 │   ├── ports/       # 인터페이스 (ABC)
 │   └── services/    # Planner, Actor, Evaluator
 ├── adapters/
 │   ├── browser/     # browser-use 래핑
 │   ├── llm/         # langchain-anthropic 래핑
-│   └── human/       # CLI 입출력
-├── graph.py         # LangGraph 상태머신
-├── state.py         # AgentState
-└── main.py          # Composition root
+│   └── research/    # DdgsSearchAdapter
+├── graph.py         # LangGraph 상태머신 (interrupt 기반 HITL)
+├── state.py         # AgentState (user_feedback 포함)
+├── server.py        # FastAPI WebSocket 서버
+├── config.py        # Pydantic Settings
+└── prompts/         # .prompty 템플릿 파일
+extension/           # Chrome Extension MV3
+├── src/
+│   ├── sidepanel/   # React Side Panel (계획 시각화 + 채팅)
+│   ├── offscreen/   # WebSocket 클라이언트
+│   ├── background/  # Service Worker
+│   └── content/     # DOM 하이라이트 Content Script
+└── manifest.json
 ```
 
 자세한 설계는 [`docs/0-initial-plan.md`](docs/0-initial-plan.md) 참조.

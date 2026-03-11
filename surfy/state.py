@@ -18,6 +18,7 @@ class AgentState(TypedDict):
     completed_tasks: Annotated[list[Task], operator.add]
     last_page_state: PageState | None
     plan_approved: bool
+    user_feedback: str | None
     research_result: ResearchResult | None
     done: bool
     error: str | None

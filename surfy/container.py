@@ -8,9 +8,16 @@ from surfy.config import Settings
 from surfy.domain.services import ActorService
 
 
-async def init_browser(cdp_url: str) -> AsyncIterator[BrowserUseAdapter]:
-    """Browser adapter lifecycle 관리를 위한 async generator."""
-    adapter = await BrowserUseAdapter.create(cdp_url)
+async def init_browser(
+    use_system_chrome: bool,
+    chrome_profile: str,
+    cdp_url: str | None,
+) -> AsyncIterator[BrowserUseAdapter]:
+    adapter = await BrowserUseAdapter.create(
+        cdp_url=cdp_url,
+        use_system_chrome=use_system_chrome,
+        chrome_profile=chrome_profile,
+    )
     yield adapter
     await adapter.close()
 
@@ -27,6 +34,8 @@ class Container(containers.DeclarativeContainer):
 
     browser = providers.Resource(
         init_browser,
+        use_system_chrome=config.provided.browser.use_system_chrome,
+        chrome_profile=config.provided.browser.chrome_profile,
         cdp_url=config.provided.browser.cdp_url,
     )
 

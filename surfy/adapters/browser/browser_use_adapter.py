@@ -1,4 +1,6 @@
 import logging
+import platform
+from pathlib import Path
 
 from browser_use import BrowserSession
 from browser_use.browser.events import (
@@ -17,19 +19,53 @@ from surfy.domain.ports import BrowserPort
 logger = logging.getLogger(__name__)
 
 
+def _get_chrome_user_data_dir() -> str:
+    system = platform.system()
+    if system == "Darwin":
+        return str(Path.home() / "Library/Application Support/Google/Chrome")
+    if system == "Linux":
+        return str(Path.home() / ".config/google-chrome")
+    if system == "Windows":
+        local_app_data = Path.home() / "AppData" / "Local" / "Google" / "Chrome" / "User Data"
+        return str(local_app_data)
+    raise RuntimeError(f"Unsupported platform: {system}")
+
+
 class BrowserUseAdapter(BrowserPort):
     def __init__(self, session: BrowserSession) -> None:
         self._session = session
         self._last_state: BrowserStateSummary | None = None
 
     @classmethod
-    async def create(cls, cdp_url: str | None = None) -> "BrowserUseAdapter":
+    async def create(
+        cls,
+        cdp_url: str | None = None,
+        *,
+        use_system_chrome: bool = False,
+        chrome_profile: str = "Default",
+    ) -> "BrowserUseAdapter":
         if cdp_url is not None:
-            session = BrowserSession(cdp_url=cdp_url)
+            session = BrowserSession(cdp_url=cdp_url, keep_alive=True)
+            label = f"CDP {cdp_url}"
+        elif use_system_chrome:
+            user_data_dir = _get_chrome_user_data_dir()
+            session = BrowserSession(
+                user_data_dir=user_data_dir,
+                profile_directory=chrome_profile,
+                headless=False,
+                keep_alive=True,
+            )
+            label = f"system chrome (profile={chrome_profile})"
         else:
-            session = BrowserSession(headless=False, disable_security=True)
+            session = BrowserSession(headless=False, disable_security=True, keep_alive=True)
+            label = "자동 실행"
         await session.start()
-        logger.info("브라우저 연결 완료: %s", cdp_url or "자동 실행")
+        # Create a dedicated tab and set it as agent focus to prevent
+        # browser-use from targeting extension pages (side panel, offscreen)
+        # during navigation or auto-recovery after target detach.
+        page = await session.new_page("about:blank")
+        session.agent_focus_target_id = page._target_id
+        logger.info("브라우저 연결 완료 (dedicated tab: %s): %s", page._target_id[:8], label)
         return cls(session)
 
     async def get_page_state(self) -> PageState:
