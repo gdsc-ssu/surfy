@@ -16,6 +16,9 @@ dependencies = [
     "langchain>=1.2.10",
     "langchain-openai>=1.1.9",
     "langgraph-cli[inmem]>=0.4.15",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "websockets>=14.0",
 ]
 
 [dependency-groups]
@@ -25,6 +28,9 @@ dev = [
     "pytest-asyncio>=1.3.0",
     "ruff>=0.15.1",
 ]
+
+[tool.setuptools.packages.find]
+include = ["surfy*"]
 
 [tool.ruff]
 target-version = "py311"

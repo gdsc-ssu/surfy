@@ -4,6 +4,7 @@ from typing import Literal
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import interrupt
 
 from surfy.domain.models import ActionType, ActorOutput, EvalResult, HistoryEntry, RouteMap, Task
 from surfy.domain.models.research import ResearchResult
@@ -69,6 +70,31 @@ def compile_graph(
 
     async def planner_node(state: AgentState) -> dict[str, object]:
         plan = state["plan"]
+
+        user_feedback = state.get("user_feedback")
+        if user_feedback and plan is not None:
+            failed_task = plan.tasks[0] if plan.tasks else Task(description="")
+            replanned = await planner.replan(plan, failed_task, user_feedback)
+            replanned.anchor = plan.anchor
+            if not replanned.tasks:
+                return {
+                    "plan": replanned,
+                    "done": True,
+                    "retry_count": 0,
+                    "current_task_idx": 0,
+                    "eval_result": None,
+                    "user_feedback": None,
+                }
+            return {
+                "plan": replanned,
+                "current_task_idx": 0,
+                "retry_count": 0,
+                "eval_result": None,
+                "error": None,
+                "plan_approved": False,
+                "user_feedback": None,
+            }
+
         if plan is None:
             new_plan = await planner.create_plan(
                 state["command"],
@@ -167,68 +193,36 @@ def compile_graph(
         plan = state["plan"]
         if plan is None:
             return {"done": True}
-
-        def to_plain_url(url: str | None) -> str:
-            if not url:
-                return "자동 탐색"
-            if "naver.com" in url:
-                if "search.naver.com" in url:
-                    return "네이버 검색 페이지"
-                return "네이버"
-            if "google.com" in url:
-                if "google.com/search" in url:
-                    return "구글 검색 페이지"
-                return "구글"
-            if "github.com" in url:
-                return "깃허브"
-            from urllib.parse import urlparse
-            domain = urlparse(url).netloc
-            return domain or url
-
-        print("\n" + "═" * 50)
-        print(f"📋 {plan.anchor}를 하겠습니다.")
-        print(f"\n💡 이유: {plan.anchor_rationale}")
-
         route_map = state.get("route_map")
-        if route_map and route_map.steps:
-            print("\n🔍 Scout이 찾은 경로:")
-            for i, step in enumerate(route_map.steps, 1):
-                print(f"    {i}. {step.action_taken} → {to_plain_url(step.url)}")
-            print(f"    최종: {to_plain_url(route_map.final_url)}")
 
-        print(f"\n📝 단계 ({len(plan.tasks)}개):")
-        unique_urls = set()
-        for i, task in enumerate(plan.tasks, 1):
-            print(f"    {i}. {task.description}")
-            print(f"       🎯 이동할 곳: {to_plain_url(task.target_url)}")
-            if task.target_url:
-                unique_urls.add(to_plain_url(task.target_url))
-            
-            criteria = task.success_criteria
-            criteria_parts = []
-            if criteria.url_contains:
-                criteria_parts.append(f"주소에 '{criteria.url_contains}' 포함")
-            if criteria.text_visible:
-                criteria_parts.append(f"화면에 '{criteria.text_visible}' 보임")
-            if criteria.description:
-                criteria_parts.append(criteria.description)
-            
-            if criteria_parts:
-                print(f"       ✅ 완료 확인: {' / '.join(criteria_parts)}")
+        result = interrupt(
+            {
+                "type": "plan_approval",
+                "plan": plan.model_dump(),
+                "route_map": route_map.model_dump() if route_map else None,
+            }
+        )
 
-        if unique_urls:
-            print(f"\n⚠️ 방문할 사이트: {', '.join(sorted(unique_urls))}")
-        print("═" * 50)
+        modification = result.get("modification")
+        if modification:
+            return {"user_feedback": modification, "plan_approved": False}
 
-        user_input = input("\n승인하시겠습니까? (Enter=승인, exit=종료): ").strip()
-        if user_input.lower() == "exit":
+        if not result.get("approved", False):
             return {"done": True}
-        return {"plan_approved": True}
+        return {"plan_approved": True, "user_feedback": None}
 
     def human_gateway_node(state: AgentState) -> dict[str, object]:
-        _ = state
-        user_input = input("재시도 한도를 초과했습니다. 종료하려면 'exit', 계속하려면 Enter: ").strip()
-        if user_input.lower() == "exit":
+        eval_result = state.get("eval_result")
+        failed_task = _current_task(state)
+        result = interrupt(
+            {
+                "type": "human_gateway",
+                "failed_task": failed_task.description if failed_task else "unknown",
+                "reason": eval_result.reason if eval_result else "unknown",
+                "retry_count": state["retry_count"],
+            }
+        )
+        if result.get("action") == "exit":
             return {"done": True}
         return {"retry_count": 0}
 
@@ -237,9 +231,14 @@ def compile_graph(
         anchor = plan.anchor if plan else "작업"
         completed_count = len(state["completed_tasks"])
 
-        print(f"\n✅ {anchor} — {completed_count}개 태스크 완료.")
-        user_input = input("추가 작업이 필요하면 Enter, 종료하려면 'exit': ").strip()
-        if user_input.lower() == "exit":
+        result = interrupt(
+            {
+                "type": "completion_check",
+                "anchor": anchor,
+                "completed_count": completed_count,
+            }
+        )
+        if result.get("action") == "exit":
             return {"done": True}
         return {}
 
@@ -253,9 +252,11 @@ def compile_graph(
             return "plan_approval"
         return "actor"
 
-    def route_after_approval(state: AgentState) -> Literal["actor", "END"]:
+    def route_after_approval(state: AgentState) -> Literal["actor", "planner", "END"]:
         if state["done"]:
             return "END"
+        if state.get("user_feedback"):
+            return "planner"
         return "actor"
 
     def route_after_evaluator(
@@ -317,6 +318,7 @@ def compile_graph(
         route_after_approval,
         {
             "actor": "actor",
+            "planner": "planner",
             "END": END,
         },
     )
