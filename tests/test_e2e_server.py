@@ -52,6 +52,7 @@ class _FakeGraph:
             return
 
         # Initial run
+        await asyncio.sleep(0.05)
         self.interrupted = True
         yield {"research": {"research_result": None}}
         yield {"scout": {"route_map": None}}
