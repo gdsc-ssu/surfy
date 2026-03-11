@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from browser_use import BrowserSession
 from browser_use.llm import ChatAnthropic as BrowserUseChatAnthropic
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from langgraph.checkpoint.memory import MemorySaver
@@ -17,6 +16,7 @@ from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
 from surfy.adapters.llm import AnthropicAdapter
 from surfy.adapters.research import DdgsSearchAdapter
+from surfy.config import Settings
 from surfy.domain.models import (
     CancelledMessage,
     CancelMessage,
@@ -24,6 +24,7 @@ from surfy.domain.models import (
     ConnectedMessage,
     DomHighlightMessage,
     ErrorMessage,
+    GetStatusMessage,
     HeartbeatMessage,
     InterruptMessage,
     NodeEndMessage,
@@ -75,11 +76,16 @@ class ServerRuntime:
     agent_session: Any
 
 
+BROWSER_WATCHDOG_INTERVAL = 5.0
+BROWSER_WATCHDOG_MAX_FAILURES = 3
+
+
 @dataclass
 class SessionStore:
     websocket: WebSocket | None = None
     runtime: ServerRuntime | None = None
     graph_task: asyncio.Task[None] | None = None
+    browser_watchdog_task: asyncio.Task[None] | None = None
     current_state: dict[str, Any] | None = None
     chat_queue: list[str] = field(default_factory=list)
     last_activity_at: float = 0.0
@@ -89,18 +95,96 @@ class SessionStore:
 _SESSION = SessionStore()
 
 
-async def _cleanup_runtime() -> None:
-    if _SESSION.graph_task is not None and not _SESSION.graph_task.done():
-        _SESSION.graph_task.cancel()
+def _is_browser_alive() -> bool:
+    if _SESSION.runtime is None:
+        return False
+    try:
+        session = _SESSION.runtime.agent_session
+        return getattr(session, "_cdp_client_root", None) is not None
+    except Exception:
+        return False
+
+
+async def _cancel_graph_task() -> None:
+    task = _SESSION.graph_task
+    if task is not None and not task.done():
+        task.cancel()
         try:
-            await _SESSION.graph_task
+            await task
         except asyncio.CancelledError:
             pass
+    _SESSION.graph_task = None
+
+
+async def _stop_browser_watchdog() -> None:
+    task = _SESSION.browser_watchdog_task
+    if task is not None and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    _SESSION.browser_watchdog_task = None
+
+
+async def _cleanup_runtime() -> None:
+    await _stop_browser_watchdog()
+    await _cancel_graph_task()
 
     if _SESSION.runtime is not None:
-        await _SESSION.runtime.agent_session.stop()
-        await _SESSION.runtime.browser.close()
+        try:
+            await _SESSION.runtime.agent_session.stop()
+        except Exception:
+            logger.warning("Failed to stop agent session during cleanup")
+        try:
+            await _SESSION.runtime.browser.close()
+        except Exception:
+            logger.warning("Failed to close browser during cleanup")
         _SESSION.runtime = None
+
+
+async def _cleanup_runtime_from_watchdog() -> None:
+    """Watchdog 전용 cleanup — watchdog 자신은 cancel하지 않음."""
+    await _cancel_graph_task()
+    if _SESSION.runtime is not None:
+        try:
+            await _SESSION.runtime.agent_session.stop()
+        except Exception:
+            logger.warning("Failed to stop agent session during watchdog cleanup")
+        try:
+            await _SESSION.runtime.browser.close()
+        except Exception:
+            logger.warning("Failed to close browser during watchdog cleanup")
+        _SESSION.runtime = None
+
+
+async def _browser_watchdog() -> None:
+    consecutive_failures = 0
+    while True:
+        await asyncio.sleep(BROWSER_WATCHDOG_INTERVAL)
+        if _SESSION.runtime is None:
+            consecutive_failures = 0
+            continue
+        if _is_browser_alive():
+            consecutive_failures = 0
+            continue
+
+        consecutive_failures += 1
+        if consecutive_failures < BROWSER_WATCHDOG_MAX_FAILURES:
+            logger.warning(
+                "Browser health check failed (%d/%d)",
+                consecutive_failures,
+                BROWSER_WATCHDOG_MAX_FAILURES,
+            )
+            continue
+
+        logger.warning("Browser disconnected — cancelling graph task and cleaning up runtime")
+        await _send_message(ErrorMessage(data=ErrorMessageData(message="Browser disconnected", node=None)))
+
+        async with _SESSION.lock:
+            await _cleanup_runtime_from_watchdog()
+            await _send_message(CancelledMessage(data=CancelledMessageData(reason="Browser disconnected")))
+        consecutive_failures = 0
 
 
 @asynccontextmanager
@@ -187,31 +271,50 @@ async def _get_or_create_runtime() -> ServerRuntime:
 
     _ensure_asyncio_create_task_compat()
 
-    browser = await BrowserUseAdapter.create()
-    llm = AnthropicAdapter(use_vision=True, model_name="claude-sonnet-4-20250514")
-    agent_llm = BrowserUseChatAnthropic(model="claude-sonnet-4-20250514")
+    settings = Settings(anthropic_api_key="dummy")  # type: ignore
+    browser_cfg = settings.browser
 
-    agent_session = BrowserSession(headless=False, disable_security=True)
-    await agent_session.start()
+    browser: BrowserUseAdapter | None = None
+    try:
+        browser = await BrowserUseAdapter.create(
+            cdp_url=browser_cfg.cdp_url,
+            use_system_chrome=browser_cfg.use_system_chrome,
+            chrome_profile=browser_cfg.chrome_profile,
+        )
+        shared_session = browser.get_session()
 
-    agent_adapter = BrowserUseAgentAdapter(session=agent_session, llm=agent_llm)
-    researcher = ResearcherService(research_port=DdgsSearchAdapter())
-    planner = PlannerService(llm=llm)
-    actor = ActorService(browser=browser, llm=llm)
-    scout = ScoutService(agent_adapter=agent_adapter)
-    evaluator = EvaluatorService(browser=browser, llm=llm)
+        llm = AnthropicAdapter(use_vision=True, model_name=settings.llm.model_name)
+        agent_llm = BrowserUseChatAnthropic(model=settings.llm.model_name)
 
-    graph = compile_graph(
-        scout=scout,
-        planner=planner,
-        actor=actor,
-        evaluator=evaluator,
-        researcher=researcher,
-        checkpointer=MemorySaver(),
-    )
+        agent_adapter = BrowserUseAgentAdapter(session=shared_session, llm=agent_llm)
+        researcher = ResearcherService(research_port=DdgsSearchAdapter())
+        planner = PlannerService(llm=llm)
+        actor = ActorService(browser=browser, llm=llm)
+        scout = ScoutService(agent_adapter=agent_adapter)
+        evaluator = EvaluatorService(browser=browser, llm=llm)
 
-    _SESSION.runtime = ServerRuntime(graph=graph, browser=browser, agent_session=agent_session)
-    return _SESSION.runtime
+        graph = compile_graph(
+            scout=scout,
+            planner=planner,
+            actor=actor,
+            evaluator=evaluator,
+            researcher=researcher,
+            checkpointer=MemorySaver(),
+        )
+
+        _SESSION.runtime = ServerRuntime(graph=graph, browser=browser, agent_session=shared_session)
+
+        if _SESSION.browser_watchdog_task is None or _SESSION.browser_watchdog_task.done():
+            _SESSION.browser_watchdog_task = asyncio.create_task(_browser_watchdog())
+
+        return _SESSION.runtime
+    except Exception:
+        if browser is not None:
+            try:
+                await browser.close()
+            except Exception:
+                logger.warning("Failed to close browser during runtime creation cleanup")
+        raise
 
 
 async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
@@ -221,7 +324,12 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
     try:
         async for event in runtime.graph.astream(input_payload, config):
             for node_name, updates in event.items():
+                if node_name == "__interrupt__":
+                    continue
+
                 plain_updates = _to_plain(updates)
+                if not isinstance(plain_updates, dict):
+                    continue
 
                 await _send_message(NodeStartMessage(data=NodeStartMessageData(node=node_name)))
 
@@ -287,8 +395,13 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
 
 async def _start_run(command: str) -> None:
     if _SESSION.graph_task is not None and not _SESSION.graph_task.done():
-        await _send_message(ErrorMessage(data=ErrorMessageData(message="Graph is already running", node=None)))
-        return
+        if not _is_browser_alive():
+            logger.warning("Graph task running but browser dead — force cancelling")
+            await _cancel_graph_task()
+            await _cleanup_runtime()
+        else:
+            await _send_message(ErrorMessage(data=ErrorMessageData(message="Graph is already running", node=None)))
+            return
 
     _SESSION.current_state = _to_plain(_initial_state(command))
     _SESSION.chat_queue.clear()
@@ -336,7 +449,16 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     _SESSION.websocket = websocket
     _SESSION.last_activity_at = time.monotonic()
-    await _send_message(ConnectedMessage(data=ConnectedMessageData(state=_SESSION.current_state)))
+
+    if _SESSION.runtime is not None and not _is_browser_alive():
+        logger.warning("Stale runtime detected on reconnect — cleaning up")
+        async with _SESSION.lock:
+            await _cleanup_runtime()
+
+    is_running = _SESSION.graph_task is not None and not _SESSION.graph_task.done()
+    await _send_message(
+        ConnectedMessage(data=ConnectedMessageData(state=_SESSION.current_state, running=is_running))
+    )
 
     heartbeat_task = asyncio.create_task(_heartbeat_loop(websocket))
 
@@ -362,6 +484,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     await _cancel_run()
             elif isinstance(message, HeartbeatMessage):
                 await _send_message(HeartbeatMessage())
+            elif isinstance(message, GetStatusMessage):
+                task_running = _SESSION.graph_task is not None and not _SESSION.graph_task.done()
+                await _send_message(
+                    ConnectedMessage(data=ConnectedMessageData(state=_SESSION.current_state, running=task_running))
+                )
             elif isinstance(message, ChatMessage):
                 _SESSION.chat_queue.append(message.data.message)
     except WebSocketDisconnect:
