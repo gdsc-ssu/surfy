@@ -10,6 +10,7 @@ from surfy.domain.models.messages import (
     ConnectedMessage,
     DomHighlightMessage,
     ErrorMessage,
+    GetStatusMessage,
     HeartbeatMessage,
     InterruptMessage,
     NodeEndMessage,
@@ -67,6 +68,14 @@ def test_heartbeat_message_roundtrip():
     json_str = msg.model_dump_json()
     parsed = HeartbeatMessage.model_validate_json(json_str)
     assert parsed.type == "heartbeat"
+    assert parsed.data == {}
+
+
+def test_get_status_message_roundtrip():
+    msg = GetStatusMessage()
+    json_str = msg.model_dump_json()
+    parsed = GetStatusMessage.model_validate_json(json_str)
+    assert parsed.type == "get_status"
     assert parsed.data == {}
 
 
@@ -179,6 +188,12 @@ def test_parse_client_message_resume():
     msg = parse_client_message(raw)
     assert isinstance(msg, ResumeMessage)
     assert msg.data.value.approved is True
+
+
+def test_parse_client_message_get_status():
+    raw = json.dumps({"type": "get_status", "data": {}})
+    msg = parse_client_message(raw)
+    assert isinstance(msg, GetStatusMessage)
 
 
 def test_parse_client_message_invalid_json():
