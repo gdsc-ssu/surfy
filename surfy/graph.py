@@ -222,7 +222,7 @@ def compile_graph(
                 "retry_count": state["retry_count"],
             }
         )
-        if result.get("action") == "exit":
+        if not result.get("approved"):
             return {"done": True}
         return {"retry_count": 0}
 
@@ -238,7 +238,7 @@ def compile_graph(
                 "completed_count": completed_count,
             }
         )
-        if result.get("action") == "exit":
+        if not result.get("approved"):
             return {"done": True}
         return {}
 
