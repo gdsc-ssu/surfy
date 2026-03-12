@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { InterruptData } from "../types";
 
 interface InterruptPanelProps {
@@ -7,6 +7,9 @@ interface InterruptPanelProps {
 }
 
 export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onResolved }) => {
+  const [showModifyInput, setShowModifyInput] = useState(false);
+  const [modifyText, setModifyText] = useState("");
+
   const handleResume = (value: any) => {
     chrome.runtime.sendMessage({
       source: "sidepanel",
@@ -24,6 +27,46 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onRes
   const renderContent = () => {
     switch (interrupt.interrupt_type) {
       case "plan_approval":
+        if (showModifyInput) {
+          return (
+            <>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Modify Plan</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                Describe what you want to change in the plan.
+              </p>
+              <textarea
+                value={modifyText}
+                onChange={(e) => setModifyText(e.target.value)}
+                className="w-full h-32 p-2 border border-gray-300 rounded-md text-sm mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                placeholder="e.g. Don't search on Google, use DuckDuckGo instead."
+                data-testid="modify-input"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    handleResume({ approved: false, modification: modifyText });
+                    setShowModifyInput(false);
+                    setModifyText("");
+                  }}
+                  className="flex-1 bg-blue-600 text-white py-2 rounded-md font-medium hover:bg-blue-700 transition-colors"
+                  data-testid="send-modification-button"
+                >
+                  Send Modification
+                </button>
+                <button
+                  onClick={() => {
+                    setShowModifyInput(false);
+                    setModifyText("");
+                  }}
+                  className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-md font-medium hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          );
+        }
+
         return (
           <>
             <h3 className="text-lg font-bold text-gray-900 mb-2">Approve Plan</h3>
@@ -37,20 +80,29 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onRes
                 ))}
               </ul>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleResume({ approved: true, modification: null })}
-                className="flex-1 bg-green-600 text-white py-2 rounded-md font-medium hover:bg-green-700 transition-colors"
-                data-testid="approve-button"
-              >
-                Approve
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleResume({ approved: true, modification: null })}
+                  className="flex-1 bg-green-600 text-white py-2 rounded-md font-medium hover:bg-green-700 transition-colors"
+                  data-testid="approve-button"
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => setShowModifyInput(true)}
+                  className="flex-1 bg-blue-600 text-white py-2 rounded-md font-medium hover:bg-blue-700 transition-colors"
+                  data-testid="modify-button"
+                >
+                  Modify
+                </button>
+              </div>
               <button
                 onClick={() => handleResume({ approved: false, modification: null })}
-                className="flex-1 bg-red-600 text-white py-2 rounded-md font-medium hover:bg-red-700 transition-colors"
-                data-testid="reject-button"
+                className="w-full bg-gray-600 text-white py-2 rounded-md font-medium hover:bg-gray-700 transition-colors"
+                data-testid="stop-button"
               >
-                Reject
+                Stop
               </button>
             </div>
           </>
