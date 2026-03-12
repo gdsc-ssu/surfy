@@ -118,20 +118,22 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onRes
               <p className="font-semibold text-sm text-red-900 mb-1">Reason:</p>
               <p className="text-sm text-red-800">{interrupt.payload.reason}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <button
                 onClick={() => handleResume({ approved: true, modification: null })}
-                className="flex-1 bg-blue-600 text-white py-2 rounded-md font-medium hover:bg-blue-700 transition-colors"
+                className="w-full bg-blue-600 text-white py-2.5 rounded-md font-medium hover:bg-blue-700 transition-colors"
                 data-testid="approve-button"
               >
-                Retry
+                <div className="text-sm font-semibold">다시 시도</div>
+                <div className="text-xs opacity-80">Planner가 새 전략으로 재시도합니다</div>
               </button>
               <button
                 onClick={() => handleResume({ approved: false })}
-                className="flex-1 bg-gray-600 text-white py-2 rounded-md font-medium hover:bg-gray-700 transition-colors"
+                className="w-full bg-gray-600 text-white py-2.5 rounded-md font-medium hover:bg-gray-700 transition-colors"
                 data-testid="reject-button"
               >
-                Exit
+                <div className="text-sm font-semibold">중단</div>
+                <div className="text-xs opacity-80">이 작업을 포기하고 종료합니다</div>
               </button>
             </div>
           </>
@@ -148,20 +150,22 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onRes
               <p className="font-semibold text-sm text-green-900 mb-1">Anchor:</p>
               <p className="text-sm text-green-800">{interrupt.payload.anchor}</p>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleResume({ approved: true })}
-                className="flex-1 bg-green-600 text-white py-2 rounded-md font-medium hover:bg-green-700 transition-colors"
-                data-testid="approve-button"
-              >
-                Continue
-              </button>
+            <div className="flex flex-col gap-2">
               <button
                 onClick={() => handleResume({ approved: false })}
-                className="flex-1 bg-gray-600 text-white py-2 rounded-md font-medium hover:bg-gray-700 transition-colors"
+                className="w-full bg-green-600 text-white py-2.5 rounded-md font-medium hover:bg-green-700 transition-colors"
+                data-testid="approve-button"
+              >
+                <div className="text-sm font-semibold">완료</div>
+                <div className="text-xs opacity-80">결과에 만족합니다. 세션을 종료합니다</div>
+              </button>
+              <button
+                onClick={() => handleResume({ approved: true })}
+                className="w-full bg-blue-600 text-white py-2.5 rounded-md font-medium hover:bg-blue-700 transition-colors"
                 data-testid="reject-button"
               >
-                Exit
+                <div className="text-sm font-semibold">추가 작업 요청</div>
+                <div className="text-xs opacity-80">Planner에게 추가 태스크를 계획하게 합니다</div>
               </button>
             </div>
           </>
