@@ -227,7 +227,8 @@ def compile_graph(
         )
         if not result.get("approved"):
             return {"done": True}
-        return {"retry_count": 0}
+        user_input = result.get("feedback", "")
+        return {"retry_count": 0, "user_feedback": user_input}
 
     def completion_check_node(state: AgentState) -> dict[str, object]:
         plan = state["plan"]
