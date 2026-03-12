@@ -156,6 +156,18 @@ class DomHighlightMessage(BaseMessage):
     data: DomHighlightMessageData
 
 
+class StepProgressMessageData(BaseModel):
+    node: str
+    step_number: int
+    description: str
+    action_type: str | None = None
+
+
+class StepProgressMessage(BaseMessage):
+    type: Literal["step_progress"] = "step_progress"
+    data: StepProgressMessageData
+
+
 class ErrorMessageData(BaseModel):
     message: str
     node: str | None = None
@@ -221,3 +233,38 @@ def parse_client_message(raw: str) -> ClientMessage:
             return GetStatusMessage.model_validate(data)
         case _:
             raise ValueError(f"Unknown message type: {msg_type}")
+
+
+__all__ = [
+    "BaseMessage",
+    "RunMessageData",
+    "RunMessage",
+    "ResumeValue",
+    "ResumeMessageData",
+    "ResumeMessage",
+    "ChatMessageData",
+    "ChatMessage",
+    "CancelMessage",
+    "HeartbeatMessage",
+    "GetStatusMessage",
+    "NodeStartMessageData",
+    "NodeStartMessage",
+    "NodeEndMessageData",
+    "NodeEndMessage",
+    "StateUpdateMessageData",
+    "StateUpdateMessage",
+    "InterruptMessageData",
+    "InterruptMessage",
+    "CancelledMessageData",
+    "CancelledMessage",
+    "DomHighlightMessageData",
+    "DomHighlightMessage",
+    "StepProgressMessageData",
+    "StepProgressMessage",
+    "ErrorMessageData",
+    "ErrorMessage",
+    "ConnectedMessageData",
+    "ConnectedMessage",
+    "ClientMessage",
+    "parse_client_message",
+]

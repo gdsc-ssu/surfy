@@ -22,20 +22,6 @@ class LLMPort(ABC):
         ...
 
     @abstractmethod
-    async def scout(
-        self,
-        task: Task,
-        page_state: PageState,
-        history: list[HistoryEntry],
-    ) -> ActorOutput:
-        """Scout용: 정찰 모드에서 다음 액션 결정.
-
-        .. deprecated:: 0.1.0
-            ScoutService가 BrowserUseAgentAdapter를 직접 사용하도록 변경됨에 따라 더 이상 사용되지 않음.
-        """
-        ...
-
-    @abstractmethod
     async def plan(self, command: str, progress: str, route_observations: str = "", research_result: str = "") -> Plan:
         """Planner용: 사용자 명령과 진행 상황을 기반으로 Plan 생성.
 
