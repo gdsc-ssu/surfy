@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer } from "react";
+import { useEffect, useReducer } from "react";
 import { AppState, Action, ServerMessage } from "./types";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { CommandInput } from "./components/CommandInput";
@@ -97,6 +97,17 @@ function reducer(state: AppState, action: Action): AppState {
       if (lastIdx >= 0 && newLog[lastIdx].node === "__loading") {
         newLog[lastIdx] = { ...newLog[lastIdx], endedAt: Date.now(), status: "done" as const };
       }
+      let startDetail: string | undefined;
+      if (action.node === "planner" && state.routeMap) {
+        const parts: string[] = [];
+        if (state.routeMap.final_url) {
+          parts.push(`Scout: ${state.routeMap.final_url}`);
+        }
+        if (state.routeMap.scout_summary) {
+          parts.push(state.routeMap.scout_summary);
+        }
+        startDetail = parts.join(" · ") || undefined;
+      }
       newLog.push({
         node: action.node,
         label: info.label,
@@ -104,6 +115,7 @@ function reducer(state: AppState, action: Action): AppState {
         startedAt: Date.now(),
         endedAt: null,
         status: "running" as const,
+        detail: startDetail,
       });
       return {
         ...state,
@@ -116,13 +128,23 @@ function reducer(state: AppState, action: Action): AppState {
         if (idx === state.activityLog.length - 1 && entry.status === "running") {
           let detail: string | undefined;
           const updates = action.updates;
-          if (action.node === "planner" && updates?.plan?.anchor) {
+          if (action.node === "research" && updates?.research_result) {
+            const r = updates.research_result;
+            const sourceCount = r.sources?.length || 0;
+            detail = sourceCount > 0
+              ? `${r.summary} (${sourceCount}개 소스)`
+              : r.summary || "검색 완료";
+          } else if (action.node === "planner" && updates?.plan?.anchor) {
             detail = `Plan: ${updates.plan.anchor}`;
           } else if (action.node === "evaluator" && updates?.eval_result) {
             const r = updates.eval_result;
             detail = r.success ? "✓ Pass" : `✗ ${r.reason || "Failed"}`;
-          } else if (action.node === "scout" && updates?.route_map?.scout_summary) {
-            detail = updates.route_map.scout_summary;
+          } else if (action.node === "scout" && updates?.route_map) {
+            const rm = updates.route_map;
+            const stepCount = rm.steps?.length || 0;
+            detail = stepCount > 0
+              ? `${stepCount}단계 탐색 → ${rm.final_url || "완료"}`
+              : rm.scout_summary || "탐색 완료";
           } else if (action.node === "actor" && updates?.last_page_state?.url) {
             detail = `→ ${updates.last_page_state.url}`;
           }
@@ -130,7 +152,11 @@ function reducer(state: AppState, action: Action): AppState {
         }
         return entry;
       });
-      return { ...state, currentNode: null, activityLog: updatedLog };
+      let newRouteMap = state.routeMap;
+      if (action.node === "scout" && action.updates?.route_map) {
+        newRouteMap = action.updates.route_map;
+      }
+      return { ...state, currentNode: null, activityLog: updatedLog, routeMap: newRouteMap };
     }
     case "INTERRUPT":
       return { ...state, interrupt: action.data };
