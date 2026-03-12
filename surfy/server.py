@@ -144,6 +144,9 @@ async def _cleanup_runtime() -> None:
             logger.warning("Failed to close browser during cleanup")
         _SESSION.runtime = None
 
+    _SESSION.current_state = None
+    _SESSION.chat_queue.clear()
+
 
 async def _cleanup_runtime_from_watchdog() -> None:
     """Watchdog 전용 cleanup — watchdog 자신은 cancel하지 않음."""
@@ -158,6 +161,9 @@ async def _cleanup_runtime_from_watchdog() -> None:
         except Exception:
             logger.warning("Failed to close browser during watchdog cleanup")
         _SESSION.runtime = None
+
+    _SESSION.current_state = None
+    _SESSION.chat_queue.clear()
 
 
 async def _browser_watchdog() -> None:

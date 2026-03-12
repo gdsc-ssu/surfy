@@ -1,4 +1,4 @@
-import React, { useState, KeyboardEvent } from "react";
+import React, { useState, useRef, KeyboardEvent } from "react";
 import { InterruptData } from "../types";
 
 interface UnifiedInputProps {
@@ -16,6 +16,7 @@ interface UnifiedInputProps {
 
 export const UnifiedInput: React.FC<UnifiedInputProps> = ({ state, onRun, onChat, disabled }) => {
   const [inputValue, setInputValue] = useState("");
+  const isComposingRef = useRef(false);
 
   const isIdle = !state.running && !state.done && !state.error;
   const isRunning = state.running && !state.interrupt;
@@ -61,7 +62,7 @@ export const UnifiedInput: React.FC<UnifiedInputProps> = ({ state, onRun, onChat
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
       e.preventDefault();
       handleSend();
     }
@@ -74,6 +75,8 @@ export const UnifiedInput: React.FC<UnifiedInputProps> = ({ state, onRun, onChat
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
+        onCompositionStart={() => { isComposingRef.current = true; }}
+        onCompositionEnd={() => { isComposingRef.current = false; }}
         placeholder={placeholder}
         disabled={disabled || !state.connected}
         className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500"
