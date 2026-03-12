@@ -28,10 +28,12 @@ class BrowserUseAgentAdapter(ScoutPort):
             task=task,
             llm=self._llm,
             browser_session=self._session,
-            enable_planning=True,
-            use_thinking=True,
+            enable_planning=False,
+            use_thinking=False,
+            use_vision=False,
+            flash_mode=True,
             loop_detection_enabled=True,
-            max_actions_per_step=3,
+            max_actions_per_step=1,
         )
 
         async def _on_new_step(_browser_state, agent_output, step_number: int) -> None:
@@ -70,6 +72,7 @@ class BrowserUseAgentAdapter(ScoutPort):
 def _history_to_route_map(history: AgentHistoryList) -> RouteMap:
     urls = history.urls()
     actions = history.action_names()
+    scout_completed = history.is_successful() is True
 
     steps: list[RouteStep] = []
     for i, url in enumerate(urls):
@@ -88,4 +91,5 @@ def _history_to_route_map(history: AgentHistoryList) -> RouteMap:
         steps=steps,
         final_url=(urls[-1] or "") if urls else "",
         scout_summary=history.final_result() or "Scout completed",
+        scout_completed=scout_completed,
     )
