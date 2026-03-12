@@ -54,16 +54,12 @@ class MockLLM(LLMPort):
     def __init__(self):
         self.task_descriptions: list[str] = []
 
-    async def decide_action(
-        self, task: Task, page_state: PageState, history: list[HistoryEntry]
-    ) -> ActorOutput:
+    async def decide_action(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
         self.task_descriptions.append(task.description)
         # 항상 CLICK 반환하여 루프 유도
         return ActorOutput(thinking="Clicking", action_type=ActionType.CLICK, target_id=1)
 
-    async def scout(
-        self, task: Task, page_state: PageState, history: list[HistoryEntry]
-    ) -> ActorOutput:
+    async def scout(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
         return ActorOutput(thinking="Scout", action_type=ActionType.DONE)
 
     async def plan(self, command: str, progress: str, route_observations: str = "") -> Plan:

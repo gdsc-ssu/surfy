@@ -31,3 +31,6 @@ class RouteMap(BaseModel):
 
     scout_summary: str
     """전체 탐색 과정에 대한 요약 및 전략적 판단."""
+
+    scout_completed: bool = False
+    """Scout Phase가 성공적으로 완료되었는지 여부."""
