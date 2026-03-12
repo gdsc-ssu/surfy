@@ -45,6 +45,7 @@ def compile_graph(
     evaluator: EvaluatorService,
     researcher: ResearcherService | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
+    scout_max_steps: int = 20,
 ) -> CompiledStateGraph:
     async def research_node(state: AgentState) -> dict[str, object]:
         if _is_simple_navigation_command(state["command"]):
@@ -61,7 +62,7 @@ def compile_graph(
     async def scout_node(state: AgentState) -> dict[str, object]:
         try:
             route_map: RouteMap = await scout.scout(
-                state["command"], research_result=state.get("research_result")
+                state["command"], max_steps=scout_max_steps, research_result=state.get("research_result")
             )
             if route_map.scout_completed:
                 return {"route_map": route_map, "done": True}
