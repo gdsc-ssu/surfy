@@ -1,12 +1,14 @@
 import asyncio
 import inspect
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from browser_use.llm import ChatAnthropic as BrowserUseChatAnthropic
+from browser_use.llm import ChatGoogle as BrowserUseChatGoogle
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
@@ -307,7 +309,20 @@ async def _get_or_create_runtime() -> ServerRuntime:
         llm = AnthropicAdapter(use_vision=True, model_name=settings.llm.model_name)
         agent_llm = BrowserUseChatAnthropic(model=settings.llm.model_name)
 
-        agent_adapter = BrowserUseAgentAdapter(session=shared_session, llm=agent_llm)
+        # Scout LLM: Gemini 3 Flash (fallback to Claude)
+        google_api_key = settings.google_api_key or os.environ.get("GOOGLE_API_KEY")
+        if google_api_key:
+            scout_llm = BrowserUseChatGoogle(
+                model=settings.scout.model_name,
+                api_key=google_api_key,
+                thinking_budget=0,
+            )
+            logger.info("Scout using Gemini: %s", settings.scout.model_name)
+        else:
+            scout_llm = agent_llm
+            logger.warning("GOOGLE_API_KEY not set — Scout falling back to Claude")
+
+        agent_adapter = BrowserUseAgentAdapter(session=shared_session, llm=scout_llm)
         researcher = ResearcherService(research_port=DdgsSearchAdapter())
         planner = PlannerService(llm=llm)
         actor = ActorService(browser=browser, llm=llm)
@@ -321,6 +336,7 @@ async def _get_or_create_runtime() -> ServerRuntime:
             evaluator=evaluator,
             researcher=researcher,
             checkpointer=MemorySaver(),
+            scout_max_steps=settings.scout.max_steps,
         )
 
         _SESSION.runtime = ServerRuntime(
