@@ -206,10 +206,7 @@ async def test_plan_modification_resume_triggers_replan_and_new_approval_interru
         resume_events.append(event)
 
     plan_approval_updates = [
-        updates
-        for event in resume_events
-        for node_name, updates in event.items()
-        if node_name == "plan_approval"
+        updates for event in resume_events for node_name, updates in event.items() if node_name == "plan_approval"
     ]
     assert any(update.get("user_feedback") == modification for update in plan_approval_updates)
 
