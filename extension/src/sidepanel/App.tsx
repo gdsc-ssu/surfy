@@ -1,14 +1,13 @@
 import { useEffect, useReducer } from "react";
 import { AppState, Action, ServerMessage } from "./types";
 import { ConnectionStatus } from "./components/ConnectionStatus";
-import { CommandInput } from "./components/CommandInput";
 import { PlanView } from "./components/PlanView";
 import { InterruptPanel } from "./components/InterruptPanel";
 import { ProgressBar } from "./components/ProgressBar";
-import { NodeStatusBar } from "./components/NodeStatusBar";
-import { ChatPanel } from "./components/ChatPanel";
 import { CancelButton } from "./components/CancelButton";
 import { ActivityLog } from "./components/ActivityLog";
+import { UnifiedInput } from "./components/UnifiedInput";
+import { MessageList } from "./components/MessageList";
 
 const NODE_INFO: Record<string, { label: string; icon: string }> = {
   research: { label: "Researching topic", icon: "🔎" },
@@ -321,6 +320,10 @@ export default function App() {
 
   const handleRunStarted = (command: string) => {
     dispatch({ type: "RUN_STARTED", command });
+    chrome.runtime.sendMessage({
+      source: "sidepanel",
+      payload: { type: "run", data: { command } },
+    });
   };
 
   const totalTasks = state.plan?.tasks.length || 0;
@@ -376,17 +379,14 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 font-sans">
-      {/* Header */}
-      <header className="flex-shrink-0 bg-white border-b border-gray-200 p-4 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-blue-600">Surfy</h1>
-          <ConnectionStatus connected={state.connected} onRetry={handleRetry} />
-        </div>
-        <CommandInput disabled={!state.connected || state.running} onRun={handleRunStarted} />
+      {/* Minimal Header */}
+      <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        <h1 className="text-xl font-bold text-blue-600">Surfy</h1>
+        <ConnectionStatus connected={state.connected} onRetry={handleRetry} />
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-hidden flex flex-col p-4 relative">
+      {/* Status Panel — scrollable */}
+      <div className="flex-1 overflow-y-auto p-4 relative">
         {state.done && !state.error && (
           <div className="bg-green-50 border border-green-200 text-green-700 p-3 rounded-md mb-4 text-sm flex items-center gap-2">
             <span className="text-lg">✓</span>
@@ -424,21 +424,19 @@ export default function App() {
             onResolved={() => dispatch({ type: "INTERRUPT_RESOLVED" })}
           />
         )}
+      </div>
 
-        <ChatPanel 
-          messages={state.messages} 
-          onSend={handleChatSend} 
-          isInterruptActive={!!state.interrupt}
-          isRunning={state.running}
-        />
-      </main>
-
-      {/* Footer */}
-      <footer className="flex-shrink-0 bg-white border-t border-gray-200 p-4 flex flex-col gap-2">
-        <ProgressBar completed={state.completedCount} total={totalTasks} />
-        <NodeStatusBar currentNode={state.currentNode} />
-        <CancelButton disabled={!state.running} onCancel={handleCancel} />
-      </footer>
+      {/* Bottom Chat Section — fixed */}
+      <div className="flex-shrink-0 bg-white border-t border-gray-200 p-3 flex flex-col gap-2">
+        <div className="max-h-48 flex flex-col">
+          <MessageList messages={state.messages} />
+        </div>
+        <UnifiedInput state={state} onRun={handleRunStarted} onChat={handleChatSend} />
+        <div className="flex items-center justify-between mt-1">
+          <ProgressBar completed={state.completedCount} total={totalTasks} />
+          {state.running && <CancelButton compact disabled={!state.running} onCancel={handleCancel} />}
+        </div>
+      </div>
     </div>
   );
 }
