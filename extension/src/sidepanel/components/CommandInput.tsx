@@ -2,7 +2,7 @@ import React, { useState } from "react";
 
 interface CommandInputProps {
   disabled: boolean;
-  onRun?: () => void;
+  onRun?: (command: string) => void;
 }
 
 export const CommandInput: React.FC<CommandInputProps> = ({ disabled, onRun }) => {
@@ -11,7 +11,7 @@ export const CommandInput: React.FC<CommandInputProps> = ({ disabled, onRun }) =
   const handleRun = () => {
     if (!inputValue.trim() || disabled) return;
 
-    onRun?.();
+    onRun?.(inputValue.trim());
 
     chrome.runtime.sendMessage({
       source: "sidepanel",
