@@ -22,24 +22,39 @@ uv sync
 
 # 3. 환경 변수 설정
 cp .env.example .env
-# .env 파일에 ANTHROPIC_API_KEY 입력
 ```
 
-### 실행
+`.env` 파일을 열어서 API 키를 입력합니다:
 
 ```bash
-# Chrome을 CDP 모드로 실행 (별도 터미널)
-# macOS:
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+# 필수
+ANTHROPIC_API_KEY=sk-ant-xxxx        # https://console.anthropic.com 에서 발급
 
-# Linux:
-google-chrome --remote-debugging-port=9222
-
-# surfy 실행
-uv run python main.py "네이버에서 오늘 날씨 검색"
+# 권장 (Scout 고속화 — Gemini 3 Flash 사용)
+GOOGLE_API_KEY=AIza...               # https://aistudio.google.com/apikey 에서 발급
 ```
 
-### 서버 모드 (Chrome Extension 연동)
+> `GOOGLE_API_KEY`가 없으면 Scout도 Claude를 사용합니다 (동작하지만 느림).
+
+### Chrome을 CDP 모드로 실행
+
+Surfy는 사용자의 Chrome에 CDP(Chrome DevTools Protocol)로 연결하여 동작합니다.
+**기존에 실행 중인 Chrome을 모두 닫고** 아래 명령으로 재시작해야 합니다.
+
+```bash
+# macOS
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --remote-debugging-port=9222 \
+  --user-data-dir=/tmp/chrome-cdp-profile
+
+# Linux
+google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-cdp-profile
+```
+
+> ⚠️ `--user-data-dir`을 지정하면 깨끗한 프로필로 시작됩니다 (로그인 세션 없음).
+> 기본 프로필 사용은 Chrome 136+ 보안 정책으로 인해 현재 불가합니다. ([#39](https://github.com/gdsc-ssu/surfy/issues/39))
+
+### 서버 + Extension으로 실행 (권장)
 
 ```bash
 # 1. 서버 시작
@@ -47,9 +62,22 @@ uv run python main.py --serve --port 8765
 
 # 2. Extension 빌드
 cd extension && npm install && npm run build
+cd ..
+```
 
-# 3. Chrome에서 Extension 로드
-# chrome://extensions → 개발자 모드 → 압축해제된 확장 프로그램을 로드합니다 → extension/dist 선택
+3. Chrome에서 Extension 로드:
+   - 주소창에 `chrome://extensions` 입력
+   - 우측 상단 **개발자 모드** 토글 ON
+   - **압축해제된 확장 프로그램을 로드합니다** 클릭
+   - `extension/dist` 폴더 선택
+   - Extension 아이콘 클릭 → Side Panel 열림
+
+4. Side Panel에서 명령 입력 (예: `네이버에서 오늘 날씨 검색`)
+
+### CLI 모드 (Extension 없이)
+
+```bash
+uv run python main.py "네이버에서 오늘 날씨 검색"
 ```
 
 ### 개발 도구
