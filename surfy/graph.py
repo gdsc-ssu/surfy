@@ -45,6 +45,7 @@ def compile_graph(
     evaluator: EvaluatorService,
     researcher: ResearcherService | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
+    scout_max_steps: int = 20,
 ) -> CompiledStateGraph:
     async def research_node(state: AgentState) -> dict[str, object]:
         if _is_simple_navigation_command(state["command"]):
@@ -61,8 +62,10 @@ def compile_graph(
     async def scout_node(state: AgentState) -> dict[str, object]:
         try:
             route_map: RouteMap = await scout.scout(
-                state["command"], research_result=state.get("research_result")
+                state["command"], max_steps=scout_max_steps, research_result=state.get("research_result")
             )
+            if route_map.scout_completed:
+                return {"route_map": route_map, "done": True}
             return {"route_map": route_map}
         except Exception as e:
             logger.warning("Scout failed: %s. Falling back to blind planning.", e)
@@ -222,7 +225,7 @@ def compile_graph(
                 "retry_count": state["retry_count"],
             }
         )
-        if result.get("action") == "exit":
+        if not result.get("approved"):
             return {"done": True}
         return {"retry_count": 0}
 
@@ -238,9 +241,14 @@ def compile_graph(
                 "completed_count": completed_count,
             }
         )
-        if result.get("action") == "exit":
+        if not result.get("approved"):
             return {"done": True}
         return {}
+
+    def route_after_scout(state: AgentState) -> Literal["planner", "END"]:
+        if state.get("done", False):
+            return "END"
+        return "planner"
 
     def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "END"]:
         if state["done"]:
@@ -302,7 +310,14 @@ def compile_graph(
     graph_builder.set_entry_point("research")
 
     graph_builder.add_edge("research", "scout")
-    graph_builder.add_edge("scout", "planner")
+    graph_builder.add_conditional_edges(
+        "scout",
+        route_after_scout,
+        {
+            "planner": "planner",
+            "END": END,
+        },
+    )
 
     graph_builder.add_conditional_edges(
         "planner",

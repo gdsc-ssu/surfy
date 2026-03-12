@@ -61,6 +61,8 @@ export interface ActivityLogEntry {
   startedAt: number;
   endedAt: number | null;
   status: "running" | "done";
+  detail?: string;
+  subSteps?: { step_number: number; description: string; action_type?: string }[];
 }
 
 export interface AppState {
@@ -76,6 +78,7 @@ export interface AppState {
   interrupt: InterruptData | null;
   messages: ChatMessage[];
   activityLog: ActivityLogEntry[];
+  lastCommand: string | null;
 }
 
 export type Action =
@@ -83,10 +86,11 @@ export type Action =
   | { type: "CONNECTED"; state: any; running: boolean }
   | { type: "STATE_UPDATE"; data: StateUpdateData }
   | { type: "NODE_START"; node: string }
-  | { type: "NODE_END"; node: string }
+  | { type: "NODE_END"; node: string; updates?: any }
   | { type: "INTERRUPT"; data: InterruptData }
   | { type: "CANCELLED" }
   | { type: "ERROR"; message: string }
-  | { type: "RUN_STARTED" }
+  | { type: "RUN_STARTED"; command: string }
   | { type: "INTERRUPT_RESOLVED" }
-  | { type: "CHAT_MESSAGE"; sender: "user" | "system"; text: string };
+  | { type: "CHAT_MESSAGE"; sender: "user" | "system"; text: string }
+  | { type: "STEP_PROGRESS"; data: { node: string; step_number: number; description: string; action_type?: string } };

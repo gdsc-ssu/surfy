@@ -57,7 +57,6 @@ class AnthropicAdapter(LLMPort):
         self._model = ChatAnthropic(model_name=model_name)  # type: ignore[call-arg]
 
         self._actor_template = _load_prompty("actor")
-        self._scout_template = _load_prompty("scout")
         self._planner_template = _load_prompty("planner")
         self._evaluator_template = _load_prompty("evaluator")
 
@@ -77,12 +76,6 @@ class AnthropicAdapter(LLMPort):
     def _evaluator_model(self):
         return self._model.with_structured_output(EvalResult)
 
-        # 프롬프트 템플릿 로드
-        self._actor_template = _load_prompty("actor")
-        self._scout_template = _load_prompty("scout")
-        self._planner_template = _load_prompty("planner")
-        self._evaluator_template = _load_prompty("evaluator")
-
     async def decide_action(
         self,
         task: Task,
@@ -95,30 +88,6 @@ class AnthropicAdapter(LLMPort):
         prompt = template.safe_substitute(
             task_description=task.description,
             target_url=task.target_url or "(없음)",
-            url=page_state.url,
-            title=page_state.title,
-            dom_text=page_state.dom_text,
-            formatted_history=self._format_history(history),
-        )
-
-        messages = [self._build_human_message(prompt, page_state.screenshot if self._use_vision else None)]
-
-        result = await self._actor_model.ainvoke(messages)
-        if isinstance(result, dict):
-            return ActorOutput(**result)
-        return result  # type: ignore[return-value]
-
-    async def scout(
-        self,
-        task: Task,
-        page_state: PageState,
-        history: list[HistoryEntry],
-    ) -> ActorOutput:
-        """Scout용: 정찰 모드에서 다음 액션 결정."""
-        template_str = self._scout_template.replace("{{", "${").replace("}}", "}")
-        template = Template(template_str)
-        prompt = template.safe_substitute(
-            task_description=task.description,
             url=page_state.url,
             title=page_state.title,
             dom_text=page_state.dom_text,

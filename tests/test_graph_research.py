@@ -96,6 +96,69 @@ async def test_research_node_handles_researcher_failure():
 
 
 @pytest.mark.asyncio
+async def test_scout_completed_skips_planner():
+    researcher = MagicMock()
+    researcher.research = AsyncMock(return_value=None)
+
+    scout = MagicMock()
+    scout.scout = AsyncMock(
+        return_value=RouteMap(
+            steps=[], final_url="https://example.com", scout_summary="완료", scout_completed=True
+        )
+    )
+
+    planner = MagicMock()
+    planner.create_plan = AsyncMock()
+    planner.next_tasks = AsyncMock()
+    planner.replan = AsyncMock()
+
+    actor = MagicMock()
+    evaluator = MagicMock()
+    graph = compile_graph(scout=scout, planner=planner, actor=actor, evaluator=evaluator, researcher=researcher)
+
+    result = await graph.ainvoke(_initial_state("네이버 열어"))
+
+    assert result["done"] is True
+    assert result["route_map"].scout_completed is True
+    planner.create_plan.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_scout_not_completed_routes_to_planner():
+    researcher = MagicMock()
+    researcher.research = AsyncMock(return_value=None)
+    graph = _build_graph(researcher=researcher)
+
+    result = await graph.ainvoke(_initial_state("네이버에서 날씨 검색"))
+
+    assert result["done"] is True
+    assert result["plan"] is not None
+
+
+@pytest.mark.asyncio
+async def test_scout_exception_falls_through_to_planner():
+    researcher = MagicMock()
+    researcher.research = AsyncMock(return_value=None)
+
+    scout = MagicMock()
+    scout.scout = AsyncMock(side_effect=RuntimeError("browser crash"))
+
+    planner = MagicMock()
+    planner.create_plan = AsyncMock(return_value=Plan(anchor="a", tasks=[], anchor_rationale="r"))
+    planner.next_tasks = AsyncMock()
+    planner.replan = AsyncMock()
+
+    actor = MagicMock()
+    evaluator = MagicMock()
+    graph = compile_graph(scout=scout, planner=planner, actor=actor, evaluator=evaluator, researcher=researcher)
+
+    result = await graph.ainvoke(_initial_state("네이버 열어"))
+
+    assert result["route_map"] is None
+    planner.create_plan.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_plan_approval_interrupt_payload_contains_plan_and_route_map():
     researcher = MagicMock()
     researcher.research = AsyncMock(
@@ -206,10 +269,7 @@ async def test_plan_modification_resume_triggers_replan_and_new_approval_interru
         resume_events.append(event)
 
     plan_approval_updates = [
-        updates
-        for event in resume_events
-        for node_name, updates in event.items()
-        if node_name == "plan_approval"
+        updates for event in resume_events for node_name, updates in event.items() if node_name == "plan_approval"
     ]
     assert any(update.get("user_feedback") == modification for update in plan_approval_updates)
 

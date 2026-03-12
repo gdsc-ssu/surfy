@@ -1,43 +1,63 @@
+import asyncio
 import logging
 
 from browser_use import Agent, BrowserSession
 from browser_use.agent.service import AgentHistoryList
 from browser_use.llm.base import BaseChatModel
 
+from surfy.domain.models.messages import StepProgressMessageData
 from surfy.domain.models.route import RouteMap, RouteStep
+from surfy.domain.ports.scout import ScoutPort
 
 logger = logging.getLogger(__name__)
 
 
-class BrowserUseAgentAdapter:
-    """browser-use Agent를 감싸는 어댑터.
-
-    Scout 정찰용으로 사용. Actor에서는 사용하지 않는다.
-    """
+class BrowserUseAgentAdapter(ScoutPort):
+    """browser-use Agent를 감싸는 ScoutPort 구현체."""
 
     def __init__(self, session: BrowserSession, llm: BaseChatModel) -> None:
         self._session = session
         self._llm = llm
+        self.step_progress_queue: asyncio.Queue[StepProgressMessageData] = asyncio.Queue()
 
-    async def explore(self, task: str, max_steps: int = 20) -> AgentHistoryList:
-        """browser-use Agent로 정찰 탐색을 수행한다.
+    async def explore(self, task: str, max_steps: int = 20) -> RouteMap:
+        while not self.step_progress_queue.empty():
+            self.step_progress_queue.get_nowait()
 
-        Args:
-            task: 탐색할 작업 설명
-            max_steps: 최대 탐색 스텝 수
-
-        Returns:
-            AgentHistoryList: 탐색 히스토리 (urls, actions, final_result 등)
-        """
         agent = Agent(
             task=task,
             llm=self._llm,
             browser_session=self._session,
-            enable_planning=True,
-            use_thinking=True,
+            enable_planning=False,
+            use_thinking=False,
+            use_vision=False,
+            flash_mode=True,
             loop_detection_enabled=True,
-            max_actions_per_step=3,
+            max_actions_per_step=1,
         )
+
+        async def _on_new_step(_browser_state, agent_output, step_number: int) -> None:
+            action_type: str | None = None
+            actions = getattr(agent_output, "action", None)
+            if isinstance(actions, list) and actions:
+                first_action = actions[0]
+                if hasattr(first_action, "model_dump"):
+                    dumped = first_action.model_dump(exclude_none=True)
+                    if isinstance(dumped, dict) and dumped:
+                        action_type = next(iter(dumped.keys()))
+
+            await self.step_progress_queue.put(
+                StepProgressMessageData(
+                    node="scout",
+                    step_number=step_number,
+                    description=getattr(agent_output, "next_goal", None) or "",
+                    action_type=action_type,
+                )
+            )
+
+        register_new_step_callback = getattr(agent, "register_new_step_callback", None)
+        if callable(register_new_step_callback):
+            register_new_step_callback(_on_new_step)
 
         logger.info("Scout Agent 탐색 시작: %s (max_steps=%d)", task[:50], max_steps)
         history = await agent.run(max_steps=max_steps)
@@ -46,13 +66,13 @@ class BrowserUseAgentAdapter:
             len(history.urls()),
             (history.final_result() or "")[:100],
         )
-        return history
+        return _history_to_route_map(history)
 
 
-def history_to_route_map(history: AgentHistoryList) -> RouteMap:
-    """AgentHistoryList를 RouteMap으로 변환한다."""
+def _history_to_route_map(history: AgentHistoryList) -> RouteMap:
     urls = history.urls()
     actions = history.action_names()
+    scout_completed = history.is_successful() is True
 
     steps: list[RouteStep] = []
     for i, url in enumerate(urls):
@@ -71,4 +91,5 @@ def history_to_route_map(history: AgentHistoryList) -> RouteMap:
         steps=steps,
         final_url=(urls[-1] or "") if urls else "",
         scout_summary=history.final_result() or "Scout completed",
+        scout_completed=scout_completed,
     )
