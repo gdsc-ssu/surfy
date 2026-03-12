@@ -32,6 +32,7 @@ from surfy.domain.models import (
     ResumeMessage,
     RunMessage,
     StateUpdateMessage,
+    StepProgressMessage,
 )
 from surfy.domain.models.messages import (
     CancelledMessageData,
@@ -74,6 +75,7 @@ class ServerRuntime:
     graph: Any
     browser: Any
     agent_session: Any
+    scout_adapter: BrowserUseAgentAdapter | None = None
 
 
 BROWSER_WATCHDOG_INTERVAL = 5.0
@@ -265,6 +267,19 @@ async def _send_message(message: BaseModel) -> None:
         _SESSION.websocket = None
 
 
+async def _stream_scout_step_progress(adapter: BrowserUseAgentAdapter, stop_event: asyncio.Event) -> None:
+    while True:
+        if stop_event.is_set() and adapter.step_progress_queue.empty():
+            return
+
+        try:
+            step_data = await asyncio.wait_for(adapter.step_progress_queue.get(), timeout=0.05)
+        except TimeoutError:
+            continue
+
+        await _send_message(StepProgressMessage(data=step_data))
+
+
 async def _get_or_create_runtime() -> ServerRuntime:
     if _SESSION.runtime is not None:
         return _SESSION.runtime
@@ -290,7 +305,7 @@ async def _get_or_create_runtime() -> ServerRuntime:
         researcher = ResearcherService(research_port=DdgsSearchAdapter())
         planner = PlannerService(llm=llm)
         actor = ActorService(browser=browser, llm=llm)
-        scout = ScoutService(agent_adapter=agent_adapter)
+        scout = ScoutService(scout=agent_adapter)
         evaluator = EvaluatorService(browser=browser, llm=llm)
 
         graph = compile_graph(
@@ -302,7 +317,12 @@ async def _get_or_create_runtime() -> ServerRuntime:
             checkpointer=MemorySaver(),
         )
 
-        _SESSION.runtime = ServerRuntime(graph=graph, browser=browser, agent_session=shared_session)
+        _SESSION.runtime = ServerRuntime(
+            graph=graph,
+            browser=browser,
+            agent_session=shared_session,
+            scout_adapter=agent_adapter,
+        )
 
         if _SESSION.browser_watchdog_task is None or _SESSION.browser_watchdog_task.done():
             _SESSION.browser_watchdog_task = asyncio.create_task(_browser_watchdog())
@@ -318,10 +338,10 @@ async def _get_or_create_runtime() -> ServerRuntime:
 
 
 async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
-    runtime = await _get_or_create_runtime()
-    config = {"configurable": {"thread_id": THREAD_ID}}
-
     try:
+        runtime = await _get_or_create_runtime()
+        config = {"configurable": {"thread_id": THREAD_ID}}
+
         async for event in runtime.graph.astream(input_payload, config):
             for node_name, updates in event.items():
                 if node_name == "__interrupt__":
@@ -331,36 +351,56 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
                 if not isinstance(plain_updates, dict):
                     continue
 
-                await _send_message(NodeStartMessage(data=NodeStartMessageData(node=node_name)))
+                scout_stop_event: asyncio.Event | None = None
+                scout_stream_task: asyncio.Task[None] | None = None
 
-                if node_name == "actor":
-                    state = _SESSION.current_state or {}
-                    plan = state.get("plan")
-                    current_idx = state.get("current_task_idx", 0)
-                    task_desc = None
-                    if plan and isinstance(plan, dict):
-                        tasks = plan.get("tasks", [])
-                        if 0 <= current_idx < len(tasks):
-                            task_desc = tasks[current_idx].get("description")
+                try:
+                    await _send_message(NodeStartMessage(data=NodeStartMessageData(node=node_name)))
 
-                    await _send_message(
-                        DomHighlightMessage(
-                            data=DomHighlightMessageData(
-                                action_type="task_start",
-                                description=task_desc,
+                    if node_name == "scout" and runtime.scout_adapter is not None:
+                        scout_stop_event = asyncio.Event()
+                        scout_stream_task = asyncio.create_task(
+                            _stream_scout_step_progress(runtime.scout_adapter, scout_stop_event)
+                        )
+
+                    if node_name == "actor":
+                        state = _SESSION.current_state or {}
+                        plan = state.get("plan")
+                        current_idx = state.get("current_task_idx", 0)
+                        task_desc = None
+                        if plan and isinstance(plan, dict):
+                            tasks = plan.get("tasks", [])
+                            if 0 <= current_idx < len(tasks):
+                                task_desc = tasks[current_idx].get("description")
+
+                        await _send_message(
+                            DomHighlightMessage(
+                                data=DomHighlightMessageData(
+                                    action_type="task_start",
+                                    description=task_desc,
+                                )
                             )
                         )
-                    )
 
-                await _send_message(NodeEndMessage(data=NodeEndMessageData(node=node_name, updates=plain_updates)))
+                    if node_name == "scout" and runtime.scout_adapter is not None:
+                        for _ in range(10):
+                            if runtime.scout_adapter.step_progress_queue.empty():
+                                break
+                            await asyncio.sleep(0.01)
 
-                if node_name == "actor":
-                    await _send_message(DomHighlightMessage(data=DomHighlightMessageData(action_type="task_end")))
+                    await _send_message(NodeEndMessage(data=NodeEndMessageData(node=node_name, updates=plain_updates)))
 
-                state = _SESSION.current_state or {}
-                state.update(plain_updates)
-                _SESSION.current_state = state
-                await _send_message(_state_update_from(state))
+                    if node_name == "actor":
+                        await _send_message(DomHighlightMessage(data=DomHighlightMessageData(action_type="task_end")))
+
+                    state = _SESSION.current_state or {}
+                    state.update(plain_updates)
+                    _SESSION.current_state = state
+                    await _send_message(_state_update_from(state))
+                finally:
+                    if scout_stop_event is not None and scout_stream_task is not None:
+                        scout_stop_event.set()
+                        await scout_stream_task
 
         snapshot = await runtime.graph.aget_state(config)
         snapshot_values = _to_plain(getattr(snapshot, "values", {}))
@@ -456,9 +496,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             await _cleanup_runtime()
 
     is_running = _SESSION.graph_task is not None and not _SESSION.graph_task.done()
-    await _send_message(
-        ConnectedMessage(data=ConnectedMessageData(state=_SESSION.current_state, running=is_running))
-    )
+    await _send_message(ConnectedMessage(data=ConnectedMessageData(state=_SESSION.current_state, running=is_running)))
 
     heartbeat_task = asyncio.create_task(_heartbeat_loop(websocket))
 

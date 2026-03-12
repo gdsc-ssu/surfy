@@ -17,6 +17,7 @@ from surfy.domain.models.messages import (
     ResumeMessage,
     RunMessage,
     StateUpdateMessage,
+    StepProgressMessage,
 )
 from surfy.domain.models.plan import Plan
 from surfy.domain.models.result import EvalResult, StepResult
@@ -47,6 +48,7 @@ __all__ = [
     "RouteStep",
     "RunMessage",
     "ResumeMessage",
+    "StepProgressMessage",
     "StateUpdateMessage",
     "StepResult",
     "SuccessCriteria",
