@@ -1,14 +1,13 @@
-import React, { useEffect, useReducer } from "react";
+import { useEffect, useReducer } from "react";
 import { AppState, Action, ServerMessage } from "./types";
 import { ConnectionStatus } from "./components/ConnectionStatus";
-import { CommandInput } from "./components/CommandInput";
 import { PlanView } from "./components/PlanView";
 import { InterruptPanel } from "./components/InterruptPanel";
 import { ProgressBar } from "./components/ProgressBar";
-import { NodeStatusBar } from "./components/NodeStatusBar";
-import { ChatPanel } from "./components/ChatPanel";
 import { CancelButton } from "./components/CancelButton";
 import { ActivityLog } from "./components/ActivityLog";
+import { UnifiedInput } from "./components/UnifiedInput";
+import { MessageList } from "./components/MessageList";
 
 const NODE_INFO: Record<string, { label: string; icon: string }> = {
   research: { label: "Researching topic", icon: "🔎" },
@@ -38,6 +37,7 @@ const initialState: AppState = {
   interrupt: null,
   messages: [],
   activityLog: [],
+  lastCommand: null,
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -60,7 +60,24 @@ function reducer(state: AppState, action: Action): AppState {
         done: action.state?.done || false,
         error: action.state?.error || null,
       };
-    case "STATE_UPDATE":
+    case "STATE_UPDATE": {
+      const newLog = [...state.activityLog];
+      if (action.data.done && !action.data.error) {
+        const last = newLog[newLog.length - 1];
+        if (!last || last.node !== "__done") {
+          if (last && last.status === "running") {
+            newLog[newLog.length - 1] = { ...last, endedAt: Date.now(), status: "done" as const };
+          }
+          newLog.push({
+            node: "__done",
+            label: "Completed",
+            icon: "✅",
+            startedAt: Date.now(),
+            endedAt: Date.now(),
+            status: "done" as const,
+          });
+        }
+      }
       return {
         ...state,
         plan: action.data.plan,
@@ -69,32 +86,76 @@ function reducer(state: AppState, action: Action): AppState {
         done: action.data.done,
         error: action.data.error,
         running: !action.data.done && !action.data.error,
+        activityLog: newLog,
       };
+    }
     case "NODE_START": {
       const info = getNodeInfo(action.node);
+      const newLog = [...state.activityLog];
+      const lastIdx = newLog.length - 1;
+      if (lastIdx >= 0 && newLog[lastIdx].node === "__loading") {
+        newLog[lastIdx] = { ...newLog[lastIdx], endedAt: Date.now(), status: "done" as const };
+      }
+      let startDetail: string | undefined;
+      if (action.node === "planner" && state.routeMap) {
+        const parts: string[] = [];
+        if (state.routeMap.final_url) {
+          parts.push(`Scout: ${state.routeMap.final_url}`);
+        }
+        if (state.routeMap.scout_summary) {
+          parts.push(state.routeMap.scout_summary);
+        }
+        startDetail = parts.join(" · ") || undefined;
+      }
+      newLog.push({
+        node: action.node,
+        label: info.label,
+        icon: info.icon,
+        startedAt: Date.now(),
+        endedAt: null,
+        status: "running" as const,
+        detail: startDetail,
+      });
       return {
         ...state,
         currentNode: action.node,
-        activityLog: [
-          ...state.activityLog,
-          {
-            node: action.node,
-            label: info.label,
-            icon: info.icon,
-            startedAt: Date.now(),
-            endedAt: null,
-            status: "running" as const,
-          },
-        ],
+        activityLog: newLog,
       };
     }
     case "NODE_END": {
-      const updatedLog = state.activityLog.map((entry, idx) =>
-        idx === state.activityLog.length - 1 && entry.status === "running"
-          ? { ...entry, endedAt: Date.now(), status: "done" as const }
-          : entry
-      );
-      return { ...state, currentNode: null, activityLog: updatedLog };
+      const updatedLog = state.activityLog.map((entry, idx) => {
+        if (idx === state.activityLog.length - 1 && entry.status === "running") {
+          let detail: string | undefined;
+          const updates = action.updates;
+          if (action.node === "research" && updates?.research_result) {
+            const r = updates.research_result;
+            const sourceCount = r.sources?.length || 0;
+            detail = sourceCount > 0
+              ? `${r.summary} (${sourceCount}개 소스)`
+              : r.summary || "검색 완료";
+          } else if (action.node === "planner" && updates?.plan?.anchor) {
+            detail = `Plan: ${updates.plan.anchor}`;
+          } else if (action.node === "evaluator" && updates?.eval_result) {
+            const r = updates.eval_result;
+            detail = r.success ? "✓ Pass" : `✗ ${r.reason || "Failed"}`;
+          } else if (action.node === "scout" && updates?.route_map) {
+            const rm = updates.route_map;
+            const stepCount = rm.steps?.length || 0;
+            detail = stepCount > 0
+              ? `${stepCount}단계 탐색 → ${rm.final_url || "완료"}`
+              : rm.scout_summary || "탐색 완료";
+          } else if (action.node === "actor" && updates?.last_page_state?.url) {
+            detail = `→ ${updates.last_page_state.url}`;
+          }
+          return { ...entry, endedAt: Date.now(), status: "done" as const, detail };
+        }
+        return entry;
+      });
+      let newRouteMap = state.routeMap;
+      if (action.node === "scout" && action.updates?.route_map) {
+        newRouteMap = action.updates.route_map;
+      }
+      return { ...state, currentNode: null, activityLog: updatedLog, routeMap: newRouteMap };
     }
     case "INTERRUPT":
       return { ...state, interrupt: action.data };
@@ -103,22 +164,40 @@ function reducer(state: AppState, action: Action): AppState {
         ...state, 
         running: false, 
         currentNode: null,
+        activityLog: [
+          ...state.activityLog,
+          {
+            node: "__cancelled",
+            label: "Execution cancelled",
+            icon: "🚫",
+            startedAt: Date.now(),
+            endedAt: Date.now(),
+            status: "done" as const,
+          },
+        ],
         messages: [
           ...state.messages,
           { sender: "system", text: "Execution cancelled.", timestamp: Date.now() }
         ]
       };
-    case "ERROR":
+    case "ERROR": {
+      const errLog = [...state.activityLog];
+      const lastIdx = errLog.length - 1;
+      if (lastIdx >= 0 && errLog[lastIdx].node === "__loading") {
+        errLog[lastIdx] = { ...errLog[lastIdx], endedAt: Date.now(), status: "done" as const };
+      }
       return { 
         ...state, 
         error: action.message, 
         running: false, 
         currentNode: null,
+        activityLog: errLog,
         messages: [
           ...state.messages,
           { sender: "system", text: `Error: ${action.message}`, timestamp: Date.now() }
         ]
       };
+    }
     case "RUN_STARTED":
       return { 
         ...state, 
@@ -126,7 +205,17 @@ function reducer(state: AppState, action: Action): AppState {
         error: null, 
         done: false, 
         interrupt: null,
-        activityLog: [],
+        lastCommand: action.command,
+        activityLog: [
+          {
+            node: "__loading",
+            label: "Starting agent...",
+            icon: "⏳",
+            startedAt: Date.now(),
+            endedAt: null,
+            status: "running" as const,
+          },
+        ],
         messages: [
           ...state.messages,
           { sender: "system", text: "Execution started.", timestamp: Date.now() }
@@ -142,6 +231,24 @@ function reducer(state: AppState, action: Action): AppState {
           { sender: action.sender, text: action.text, timestamp: Date.now() },
         ],
       };
+    case "STEP_PROGRESS": {
+      const newLog = [...state.activityLog];
+      // Find the last running entry that matches the node
+      for (let i = newLog.length - 1; i >= 0; i--) {
+        if (newLog[i].node === action.data.node && newLog[i].status === "running") {
+          const entry = newLog[i];
+          const subSteps = entry.subSteps ? [...entry.subSteps] : [];
+          subSteps.push({
+            step_number: action.data.step_number,
+            description: action.data.description,
+            action_type: action.data.action_type,
+          });
+          newLog[i] = { ...entry, subSteps };
+          break;
+        }
+      }
+      return { ...state, activityLog: newLog };
+    }
     default:
       return state;
   }
@@ -168,7 +275,7 @@ export default function App() {
           dispatch({ type: "NODE_START", node: message.data?.node || "unknown" });
           break;
         case "node_end":
-          dispatch({ type: "NODE_END", node: message.data?.node || "unknown" });
+          dispatch({ type: "NODE_END", node: message.data?.node || "unknown", updates: message.data?.updates });
           break;
         case "interrupt":
           dispatch({ type: "INTERRUPT", data: message.data });
@@ -178,6 +285,17 @@ export default function App() {
           break;
         case "error":
           dispatch({ type: "ERROR", message: message.data?.message || "Unknown error" });
+          break;
+        case "step_progress":
+          dispatch({
+            type: "STEP_PROGRESS",
+            data: {
+              node: message.data?.node || "unknown",
+              step_number: message.data?.step_number || 0,
+              description: message.data?.description || "",
+              action_type: message.data?.action_type,
+            },
+          });
           break;
         case "chat":
           if (message.data?.message) {
@@ -200,8 +318,12 @@ export default function App() {
     };
   }, []);
 
-  const handleRunStarted = () => {
-    dispatch({ type: "RUN_STARTED" });
+  const handleRunStarted = (command: string) => {
+    dispatch({ type: "RUN_STARTED", command });
+    chrome.runtime.sendMessage({
+      source: "sidepanel",
+      payload: { type: "run", data: { command } },
+    });
   };
 
   const totalTasks = state.plan?.tasks.length || 0;
@@ -246,22 +368,45 @@ export default function App() {
     });
   };
 
+  const handleCommandRetry = () => {
+    if (!state.lastCommand) return;
+    dispatch({ type: "RUN_STARTED", command: state.lastCommand });
+    chrome.runtime.sendMessage({
+      source: "sidepanel",
+      payload: { type: "run", data: { command: state.lastCommand } },
+    });
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 font-sans">
-      {/* Header */}
-      <header className="flex-shrink-0 bg-white border-b border-gray-200 p-4 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-blue-600">Surfy</h1>
-          <ConnectionStatus connected={state.connected} onRetry={handleRetry} />
-        </div>
-        <CommandInput disabled={!state.connected || state.running} onRun={handleRunStarted} />
+      {/* Minimal Header */}
+      <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        <h1 className="text-xl font-bold text-blue-600">Surfy</h1>
+        <ConnectionStatus connected={state.connected} onRetry={handleRetry} />
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-hidden flex flex-col p-4 relative">
+      {/* Status Panel — scrollable */}
+      <div className="flex-1 overflow-y-auto p-4 relative">
+        {state.done && !state.error && (
+          <div className="bg-green-50 border border-green-200 text-green-700 p-3 rounded-md mb-4 text-sm flex items-center gap-2">
+            <span className="text-lg">✓</span>
+            <span className="font-medium">완료</span>
+          </div>
+        )}
+
         {state.error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-md mb-4 text-sm">
-            <span className="font-bold">Error:</span> {state.error}
+          <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-md mb-4 text-sm flex items-center justify-between">
+            <div>
+              <span className="font-bold">Error:</span> {state.error}
+            </div>
+            {state.lastCommand && (
+              <button
+                onClick={handleCommandRetry}
+                className="ml-3 px-3 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700 transition-colors flex-shrink-0"
+              >
+                Retry
+              </button>
+            )}
           </div>
         )}
 
@@ -279,21 +424,19 @@ export default function App() {
             onResolved={() => dispatch({ type: "INTERRUPT_RESOLVED" })}
           />
         )}
+      </div>
 
-        <ChatPanel 
-          messages={state.messages} 
-          onSend={handleChatSend} 
-          isInterruptActive={!!state.interrupt}
-          isRunning={state.running}
-        />
-      </main>
-
-      {/* Footer */}
-      <footer className="flex-shrink-0 bg-white border-t border-gray-200 p-4 flex flex-col gap-2">
-        <ProgressBar completed={state.completedCount} total={totalTasks} />
-        <NodeStatusBar currentNode={state.currentNode} />
-        <CancelButton disabled={!state.running} onCancel={handleCancel} />
-      </footer>
+      {/* Bottom Chat Section — fixed */}
+      <div className="flex-shrink-0 bg-white border-t border-gray-200 p-3 flex flex-col gap-2">
+        <div className="max-h-48 flex flex-col">
+          <MessageList messages={state.messages} />
+        </div>
+        <UnifiedInput state={state} onRun={handleRunStarted} onChat={handleChatSend} />
+        <div className="flex items-center justify-between mt-1">
+          <ProgressBar completed={state.completedCount} total={totalTasks} />
+          {state.running && <CancelButton compact disabled={!state.running} onCancel={handleCancel} />}
+        </div>
+      </div>
     </div>
   );
 }

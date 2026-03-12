@@ -1,7 +1,7 @@
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -9,6 +9,7 @@ from langgraph.types import Command
 from starlette.testclient import TestClient
 
 import surfy.server as server
+from surfy.domain.models.messages import StepProgressMessageData
 
 
 @dataclass
@@ -76,6 +77,30 @@ class _SlowGraph:
         return _FakeSnapshot(next=(), tasks=[], values={})
 
 
+class _ScoutGraph:
+    async def astream(self, payload: dict[str, Any] | Command, config: dict[str, Any]):
+        _ = payload
+        _ = config
+        yield {
+            "scout": {
+                "route_map": {"steps": [], "final_url": "", "scout_summary": "ok"},
+                "current_task_idx": 0,
+                "completed_tasks": [],
+                "done": False,
+                "error": None,
+            }
+        }
+
+    async def aget_state(self, config: dict[str, Any]) -> _FakeSnapshot:
+        _ = config
+        return _FakeSnapshot(next=(), tasks=[], values={})
+
+
+class _FakeScoutAdapter:
+    def __init__(self) -> None:
+        self.step_progress_queue: asyncio.Queue[StepProgressMessageData] = asyncio.Queue()
+
+
 class _DummyCloser:
     async def close(self) -> None:
         return
@@ -101,6 +126,47 @@ async def test_health_endpoint(reset_server_state):
         response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_handle_graph_stream_scout_step_progress(reset_server_state, monkeypatch: pytest.MonkeyPatch):
+    _ = reset_server_state
+
+    scout_adapter = _FakeScoutAdapter()
+    await scout_adapter.step_progress_queue.put(
+        StepProgressMessageData(
+            node="scout",
+            step_number=1,
+            description="Navigating to google.com",
+            action_type="go_to_url",
+        )
+    )
+
+    async def fake_runtime() -> server.ServerRuntime:
+        return server.ServerRuntime(
+            graph=_ScoutGraph(),
+            browser=_DummyCloser(),
+            agent_session=_DummyStopper(),
+            scout_adapter=cast(Any, scout_adapter),
+        )
+
+    sent_messages: list[Any] = []
+
+    async def capture_send(message: Any) -> None:
+        sent_messages.append(message)
+
+    monkeypatch.setattr(server, "_get_or_create_runtime", fake_runtime)
+    monkeypatch.setattr(server, "_send_message", capture_send)
+
+    await server._handle_graph_stream(server._initial_state("do scout"))
+
+    sent_types = [msg.type for msg in sent_messages]
+    assert "step_progress" in sent_types
+
+    scout_start_idx = sent_types.index("node_start")
+    scout_step_idx = sent_types.index("step_progress")
+    scout_end_idx = sent_types.index("node_end")
+    assert scout_start_idx < scout_step_idx < scout_end_idx
 
 
 def test_websocket_connected_message(reset_server_state):
@@ -385,9 +451,7 @@ async def test_runtime_creation_failure_no_runtime_stored(reset_server_state, mo
             "S",
             (),
             {
-                "browser": type(
-                    "B", (), {"cdp_url": None, "use_system_chrome": False, "chrome_profile": "Default"}
-                )(),
+                "browser": type("B", (), {"cdp_url": None, "use_system_chrome": False, "chrome_profile": "Default"})(),
                 "llm": type("L", (), {"model_name": "test"})(),
             },
         )(),
@@ -425,9 +489,7 @@ async def test_runtime_partial_creation_cleans_up_browser(reset_server_state, mo
             "S",
             (),
             {
-                "browser": type(
-                    "B", (), {"cdp_url": None, "use_system_chrome": False, "chrome_profile": "Default"}
-                )(),
+                "browser": type("B", (), {"cdp_url": None, "use_system_chrome": False, "chrome_profile": "Default"})(),
                 "llm": type("L", (), {"model_name": "test"})(),
             },
         )(),
@@ -445,3 +507,22 @@ async def test_runtime_partial_creation_cleans_up_browser(reset_server_state, mo
 
     assert close_called
     assert server._SESSION.runtime is None
+
+
+def test_websocket_run_runtime_creation_failure_sends_error(reset_server_state, monkeypatch: pytest.MonkeyPatch):
+    _ = reset_server_state
+
+    async def failing_runtime() -> server.ServerRuntime:
+        raise RuntimeError("CDP connection failed")
+
+    monkeypatch.setattr(server, "_get_or_create_runtime", failing_runtime)
+
+    with TestClient(server.app) as client:
+        with client.websocket_connect("/ws") as ws:
+            ws.receive_json()
+
+            ws.send_text(json.dumps({"type": "run", "data": {"command": "fail test", "thread_id": "x"}}))
+
+            error = ws.receive_json()
+            assert error["type"] == "error"
+            assert "CDP connection failed" in error["data"]["message"]

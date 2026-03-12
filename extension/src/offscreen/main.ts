@@ -1,7 +1,8 @@
 // Server message types (from surfy/domain/models/messages.py)
 type ServerMessageType = 
   | "connected" | "node_start" | "node_end" | "state_update" 
-  | "interrupt" | "cancelled" | "dom_highlight" | "error" | "heartbeat";
+  | "interrupt" | "cancelled" | "dom_highlight" | "error" | "heartbeat"
+  | "step_progress";
 
 // Client message types
 type ClientMessageType = "run" | "resume" | "chat" | "cancel" | "heartbeat";

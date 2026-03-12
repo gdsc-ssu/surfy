@@ -17,10 +17,21 @@ class BrowserSettings(BaseSettings):
     cdp_url: str | None = None
 
 
+class ScoutSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="SCOUT_", env_file=".env", extra="ignore")
+
+    model_name: str = "gemini-3-flash-preview"
+    use_vision: bool = False
+    flash_mode: bool = True
+    max_steps: int = 5
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     anthropic_api_key: str = Field(..., repr=False)  # 로그/repr에서 숨김
+    google_api_key: str | None = None
 
     llm: LLMSettings = Field(default_factory=LLMSettings)
     browser: BrowserSettings = Field(default_factory=BrowserSettings)
+    scout: ScoutSettings = Field(default_factory=ScoutSettings)

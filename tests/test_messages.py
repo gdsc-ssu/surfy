@@ -5,25 +5,39 @@ import pytest
 
 from surfy.domain.models.messages import (
     CancelledMessage,
+    CancelledMessageData,
     CancelMessage,
     ChatMessage,
+    ChatMessageData,
     ConnectedMessage,
+    ConnectedMessageData,
     DomHighlightMessage,
+    DomHighlightMessageData,
     ErrorMessage,
+    ErrorMessageData,
     GetStatusMessage,
     HeartbeatMessage,
     InterruptMessage,
+    InterruptMessageData,
     NodeEndMessage,
+    NodeEndMessageData,
     NodeStartMessage,
+    NodeStartMessageData,
     ResumeMessage,
+    ResumeMessageData,
+    ResumeValue,
     RunMessage,
+    RunMessageData,
     StateUpdateMessage,
+    StateUpdateMessageData,
+    StepProgressMessage,
+    StepProgressMessageData,
     parse_client_message,
 )
 
 
 def test_run_message_roundtrip():
-    msg = RunMessage(data={"command": "test command", "thread_id": "thread-123"})
+    msg = RunMessage(data=RunMessageData(command="test command", thread_id="thread-123"))
     json_str = msg.model_dump_json()
     parsed = RunMessage.model_validate_json(json_str)
     assert parsed.type == "run"
@@ -34,10 +48,10 @@ def test_run_message_roundtrip():
 
 def test_resume_message_roundtrip():
     msg = ResumeMessage(
-        data={
-            "interrupt_type": "plan_approval",
-            "value": {"approved": True, "modification": "looks good"},
-        }
+        data=ResumeMessageData(
+            interrupt_type="plan_approval",
+            value=ResumeValue(approved=True, modification="looks good"),
+        )
     )
     json_str = msg.model_dump_json()
     parsed = ResumeMessage.model_validate_json(json_str)
@@ -48,7 +62,7 @@ def test_resume_message_roundtrip():
 
 
 def test_chat_message_roundtrip():
-    msg = ChatMessage(data={"message": "hello"})
+    msg = ChatMessage(data=ChatMessageData(message="hello"))
     json_str = msg.model_dump_json()
     parsed = ChatMessage.model_validate_json(json_str)
     assert parsed.type == "chat"
@@ -80,7 +94,7 @@ def test_get_status_message_roundtrip():
 
 
 def test_node_start_message_roundtrip():
-    msg = NodeStartMessage(data={"node": "planner"})
+    msg = NodeStartMessage(data=NodeStartMessageData(node="planner"))
     json_str = msg.model_dump_json()
     parsed = NodeStartMessage.model_validate_json(json_str)
     assert parsed.type == "node_start"
@@ -88,7 +102,7 @@ def test_node_start_message_roundtrip():
 
 
 def test_node_end_message_roundtrip():
-    msg = NodeEndMessage(data={"node": "planner", "updates": {"plan": {"anchor": "test"}}})
+    msg = NodeEndMessage(data=NodeEndMessageData(node="planner", updates={"plan": {"anchor": "test"}}))
     json_str = msg.model_dump_json()
     parsed = NodeEndMessage.model_validate_json(json_str)
     assert parsed.type == "node_end"
@@ -98,17 +112,18 @@ def test_node_end_message_roundtrip():
 
 def test_state_update_message_roundtrip():
     msg = StateUpdateMessage(
-        data={
-            "plan": {"anchor": "test", "tasks": []},
-            "current_task_idx": 1,
-            "completed_count": 1,
-            "done": False,
-            "error": None,
-        }
+        data=StateUpdateMessageData(
+            plan={"anchor": "test", "tasks": []},
+            current_task_idx=1,
+            completed_count=1,
+            done=False,
+            error=None,
+        )
     )
     json_str = msg.model_dump_json()
     parsed = StateUpdateMessage.model_validate_json(json_str)
     assert parsed.type == "state_update"
+    assert parsed.data.plan is not None
     assert parsed.data.plan["anchor"] == "test"
     assert parsed.data.current_task_idx == 1
     assert parsed.data.completed_count == 1
@@ -117,7 +132,7 @@ def test_state_update_message_roundtrip():
 
 
 def test_interrupt_message_roundtrip():
-    msg = InterruptMessage(data={"interrupt_type": "plan_approval", "payload": {"plan": "..."}})
+    msg = InterruptMessage(data=InterruptMessageData(interrupt_type="plan_approval", payload={"plan": "..."}))
     json_str = msg.model_dump_json()
     parsed = InterruptMessage.model_validate_json(json_str)
     assert parsed.type == "interrupt"
@@ -126,7 +141,7 @@ def test_interrupt_message_roundtrip():
 
 
 def test_cancelled_message_roundtrip():
-    msg = CancelledMessage(data={"reason": "user requested"})
+    msg = CancelledMessage(data=CancelledMessageData(reason="user requested"))
     json_str = msg.model_dump_json()
     parsed = CancelledMessage.model_validate_json(json_str)
     assert parsed.type == "cancelled"
@@ -135,24 +150,43 @@ def test_cancelled_message_roundtrip():
 
 def test_dom_highlight_message_roundtrip():
     msg = DomHighlightMessage(
-        data={
-            "action_type": "click",
-            "target_selector": "button#submit",
-            "bounding_box": {"x": 10, "y": 20, "width": 100, "height": 50},
-            "description": "Clicking submit button",
-        }
+        data=DomHighlightMessageData(
+            action_type="click",
+            target_selector="button#submit",
+            bounding_box={"x": 10, "y": 20, "width": 100, "height": 50},
+            description="Clicking submit button",
+        )
     )
     json_str = msg.model_dump_json()
     parsed = DomHighlightMessage.model_validate_json(json_str)
     assert parsed.type == "dom_highlight"
     assert parsed.data.action_type == "click"
     assert parsed.data.target_selector == "button#submit"
+    assert parsed.data.bounding_box is not None
     assert parsed.data.bounding_box["x"] == 10
     assert parsed.data.description == "Clicking submit button"
 
 
+def test_step_progress_message_roundtrip():
+    msg = StepProgressMessage(
+        data=StepProgressMessageData(
+            node="scout",
+            step_number=2,
+            description="Navigating to google.com",
+            action_type="go_to_url",
+        )
+    )
+    json_str = msg.model_dump_json()
+    parsed = StepProgressMessage.model_validate_json(json_str)
+    assert parsed.type == "step_progress"
+    assert parsed.data.node == "scout"
+    assert parsed.data.step_number == 2
+    assert parsed.data.description == "Navigating to google.com"
+    assert parsed.data.action_type == "go_to_url"
+
+
 def test_error_message_roundtrip():
-    msg = ErrorMessage(data={"message": "something went wrong", "node": "actor"})
+    msg = ErrorMessage(data=ErrorMessageData(message="something went wrong", node="actor"))
     json_str = msg.model_dump_json()
     parsed = ErrorMessage.model_validate_json(json_str)
     assert parsed.type == "error"
@@ -161,10 +195,11 @@ def test_error_message_roundtrip():
 
 
 def test_connected_message_roundtrip():
-    msg = ConnectedMessage(data={"state": {"connected": True}})
+    msg = ConnectedMessage(data=ConnectedMessageData(state={"connected": True}))
     json_str = msg.model_dump_json()
     parsed = ConnectedMessage.model_validate_json(json_str)
     assert parsed.type == "connected"
+    assert parsed.data.state is not None
     assert parsed.data.state["connected"] is True
 
 

@@ -23,14 +23,10 @@ class MockLLM(LLMPort):
     def __init__(self):
         self.plan_calls: list[tuple[str, str, str, str]] = []
 
-    async def decide_action(
-        self, task: Task, page_state: PageState, history: list[HistoryEntry]
-    ) -> ActorOutput:
+    async def decide_action(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
         return ActorOutput(thinking="test", action_type=ActionType.DONE)
 
-    async def scout(
-        self, task: Task, page_state: PageState, history: list[HistoryEntry]
-    ) -> ActorOutput:
+    async def scout(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
         return ActorOutput(thinking="test", action_type=ActionType.DONE)
 
     async def plan(self, command: str, progress: str, route_observations: str = "", research_result: str = "") -> Plan:
@@ -61,7 +57,7 @@ async def test_create_plan_with_route_map():
     """route_map과 함께 create_plan 호출 시 route_observations가 채워지는지 확인."""
     llm = MockLLM()
     planner = PlannerService(llm)
-    
+
     route_map = RouteMap(
         steps=[
             RouteStep(
@@ -89,10 +85,10 @@ def test_format_route_observations_empty():
     """빈 steps를 가진 RouteMap 포맷팅 확인."""
     llm = MockLLM()
     planner = PlannerService(llm)
-    
+
     route_map = RouteMap(steps=[], final_url="", scout_summary="")
     obs = planner._format_route_observations(route_map)
-    
+
     assert obs == ""
 
 
@@ -100,7 +96,7 @@ def test_format_route_observations_content():
     """RouteMap 포맷팅 내용 검증."""
     llm = MockLLM()
     planner = PlannerService(llm)
-    
+
     route_map = RouteMap(
         steps=[
             RouteStep(
@@ -121,9 +117,9 @@ def test_format_route_observations_content():
         final_url="https://b.com",
         scout_summary="Summary",
     )
-    
+
     obs = planner._format_route_observations(route_map)
-    
+
     assert "Scout 탐색 요약: Summary" in obs
     assert "Step 1: CLICK → https://a.com" in obs
     assert "발견한 요소: e1, e2" in obs

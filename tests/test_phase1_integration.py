@@ -2,6 +2,7 @@
 
 실행: uv run pytest tests/test_phase1_integration.py -v
 """
+
 import os
 import platform
 import shutil
@@ -66,9 +67,7 @@ async def test_go_to_url(adapter):
 
 @pytest.mark.asyncio
 async def test_get_page_state(adapter):
-    await adapter.execute_action(
-        BrowserAction(action_type=ActionType.GO_TO_URL, value="https://www.google.com")
-    )
+    await adapter.execute_action(BrowserAction(action_type=ActionType.GO_TO_URL, value="https://www.google.com"))
     state = await adapter.get_page_state()
     assert "google" in state.url.lower()
     assert len(state.dom_text) > 0
@@ -77,7 +76,5 @@ async def test_get_page_state(adapter):
 
 @pytest.mark.asyncio
 async def test_check_text_visible(adapter):
-    await adapter.execute_action(
-        BrowserAction(action_type=ActionType.GO_TO_URL, value="https://www.google.com")
-    )
+    await adapter.execute_action(BrowserAction(action_type=ActionType.GO_TO_URL, value="https://www.google.com"))
     assert await adapter.check_text_visible("Google")

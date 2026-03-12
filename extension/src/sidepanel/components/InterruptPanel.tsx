@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { InterruptData } from "../types";
 
 interface InterruptPanelProps {
@@ -7,6 +7,9 @@ interface InterruptPanelProps {
 }
 
 export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onResolved }) => {
+  const [showModifyInput, setShowModifyInput] = useState(false);
+  const [modifyText, setModifyText] = useState("");
+
   const handleResume = (value: any) => {
     chrome.runtime.sendMessage({
       source: "sidepanel",
@@ -24,6 +27,46 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onRes
   const renderContent = () => {
     switch (interrupt.interrupt_type) {
       case "plan_approval":
+        if (showModifyInput) {
+          return (
+            <>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Modify Plan</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                Describe what you want to change in the plan.
+              </p>
+              <textarea
+                value={modifyText}
+                onChange={(e) => setModifyText(e.target.value)}
+                className="w-full h-32 p-2 border border-gray-300 rounded-md text-sm mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                placeholder="e.g. Don't search on Google, use DuckDuckGo instead."
+                data-testid="modify-input"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    handleResume({ approved: false, modification: modifyText });
+                    setShowModifyInput(false);
+                    setModifyText("");
+                  }}
+                  className="flex-1 bg-blue-600 text-white py-2 rounded-md font-medium hover:bg-blue-700 transition-colors"
+                  data-testid="send-modification-button"
+                >
+                  Send Modification
+                </button>
+                <button
+                  onClick={() => {
+                    setShowModifyInput(false);
+                    setModifyText("");
+                  }}
+                  className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-md font-medium hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          );
+        }
+
         return (
           <>
             <h3 className="text-lg font-bold text-gray-900 mb-2">Approve Plan</h3>
@@ -37,20 +80,29 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onRes
                 ))}
               </ul>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleResume({ approved: true, modification: null })}
-                className="flex-1 bg-green-600 text-white py-2 rounded-md font-medium hover:bg-green-700 transition-colors"
-                data-testid="approve-button"
-              >
-                Approve
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleResume({ approved: true, modification: null })}
+                  className="flex-1 bg-green-600 text-white py-2 rounded-md font-medium hover:bg-green-700 transition-colors"
+                  data-testid="approve-button"
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => setShowModifyInput(true)}
+                  className="flex-1 bg-blue-600 text-white py-2 rounded-md font-medium hover:bg-blue-700 transition-colors"
+                  data-testid="modify-button"
+                >
+                  Modify
+                </button>
+              </div>
               <button
                 onClick={() => handleResume({ approved: false, modification: null })}
-                className="flex-1 bg-red-600 text-white py-2 rounded-md font-medium hover:bg-red-700 transition-colors"
-                data-testid="reject-button"
+                className="w-full bg-gray-600 text-white py-2 rounded-md font-medium hover:bg-gray-700 transition-colors"
+                data-testid="stop-button"
               >
-                Reject
+                Stop
               </button>
             </div>
           </>
@@ -66,20 +118,22 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onRes
               <p className="font-semibold text-sm text-red-900 mb-1">Reason:</p>
               <p className="text-sm text-red-800">{interrupt.payload.reason}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <button
                 onClick={() => handleResume({ approved: true, modification: null })}
-                className="flex-1 bg-blue-600 text-white py-2 rounded-md font-medium hover:bg-blue-700 transition-colors"
+                className="w-full bg-blue-600 text-white py-2.5 rounded-md font-medium hover:bg-blue-700 transition-colors"
                 data-testid="approve-button"
               >
-                Retry
+                <div className="text-sm font-semibold">다시 시도</div>
+                <div className="text-xs opacity-80">Planner가 새 전략으로 재시도합니다</div>
               </button>
               <button
                 onClick={() => handleResume({ approved: false })}
-                className="flex-1 bg-gray-600 text-white py-2 rounded-md font-medium hover:bg-gray-700 transition-colors"
+                className="w-full bg-gray-600 text-white py-2.5 rounded-md font-medium hover:bg-gray-700 transition-colors"
                 data-testid="reject-button"
               >
-                Exit
+                <div className="text-sm font-semibold">중단</div>
+                <div className="text-xs opacity-80">이 작업을 포기하고 종료합니다</div>
               </button>
             </div>
           </>
@@ -96,20 +150,22 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onRes
               <p className="font-semibold text-sm text-green-900 mb-1">Anchor:</p>
               <p className="text-sm text-green-800">{interrupt.payload.anchor}</p>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleResume({ approved: true })}
-                className="flex-1 bg-green-600 text-white py-2 rounded-md font-medium hover:bg-green-700 transition-colors"
-                data-testid="approve-button"
-              >
-                Continue
-              </button>
+            <div className="flex flex-col gap-2">
               <button
                 onClick={() => handleResume({ approved: false })}
-                className="flex-1 bg-gray-600 text-white py-2 rounded-md font-medium hover:bg-gray-700 transition-colors"
+                className="w-full bg-green-600 text-white py-2.5 rounded-md font-medium hover:bg-green-700 transition-colors"
+                data-testid="approve-button"
+              >
+                <div className="text-sm font-semibold">완료</div>
+                <div className="text-xs opacity-80">결과에 만족합니다. 세션을 종료합니다</div>
+              </button>
+              <button
+                onClick={() => handleResume({ approved: true })}
+                className="w-full bg-blue-600 text-white py-2.5 rounded-md font-medium hover:bg-blue-700 transition-colors"
                 data-testid="reject-button"
               >
-                Exit
+                <div className="text-sm font-semibold">추가 작업 요청</div>
+                <div className="text-xs opacity-80">Planner에게 추가 태스크를 계획하게 합니다</div>
               </button>
             </div>
           </>
