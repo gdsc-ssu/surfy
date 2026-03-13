@@ -93,4 +93,5 @@ export type Action =
   | { type: "RUN_STARTED"; command: string }
   | { type: "INTERRUPT_RESOLVED" }
   | { type: "CHAT_MESSAGE"; sender: "user" | "system"; text: string }
-  | { type: "STEP_PROGRESS"; data: { node: string; step_number: number; description: string; action_type?: string } };
+  | { type: "STEP_PROGRESS"; data: { node: string; step_number: number; description: string; action_type?: string } }
+  | { type: "CLEAR" };
