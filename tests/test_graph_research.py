@@ -348,7 +348,7 @@ async def test_human_gateway_triggers_after_retry_exhausted_and_passes_feedback_
 
     # 3단계: 사용자 피드백으로 resume → planner replan
     user_feedback = "돋보기 아이콘을 먼저 클릭해봐"
-    async for _ in graph.astream(Command(resume={"feedback": user_feedback}), config):
+    async for _ in graph.astream(Command(resume={"approved": True, "feedback": user_feedback}), config):
         pass
 
     # planner.replan이 user_feedback으로 호출됐는지 검증
