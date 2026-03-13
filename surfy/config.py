@@ -5,7 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LLM_", env_file=".env", extra="ignore")
 
-    model_name: str = "claude-sonnet-4-5-20250929"
+    provider: str = "gemini"
+    model_name: str = "gemini-2.0-flash"
     use_vision: bool = False
 
 
@@ -29,7 +30,7 @@ class ScoutSettings(BaseSettings):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    anthropic_api_key: str = Field(..., repr=False)  # 로그/repr에서 숨김
+    anthropic_api_key: str | None = Field(default=None, repr=False)  # 로그/repr에서 숨김
     google_api_key: str | None = None
 
     llm: LLMSettings = Field(default_factory=LLMSettings)

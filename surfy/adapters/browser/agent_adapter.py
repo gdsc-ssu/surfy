@@ -69,10 +69,28 @@ class BrowserUseAgentAdapter(ScoutPort):
         return _history_to_route_map(history)
 
 
+_LOGIN_PATH_PATTERNS = ("/login", "/signin", "/sign-in", "/auth", "/sso", "/cas/login", "/oauth")
+
+
+def _is_login_wall(urls: list[str | None]) -> bool:
+    if not urls:
+        return False
+    last_url = (urls[-1] or "").lower()
+    from urllib.parse import urlparse
+
+    path = urlparse(last_url).path
+    return any(pattern in path for pattern in _LOGIN_PATH_PATTERNS)
+
+
 def _history_to_route_map(history: AgentHistoryList) -> RouteMap:
     urls = history.urls()
     actions = history.action_names()
     scout_completed = history.is_successful() is True
+
+    login_wall = _is_login_wall(urls)
+    if scout_completed and login_wall:
+        logger.info("Scout reported success but landed on login page — overriding scout_completed to False")
+        scout_completed = False
 
     steps: list[RouteStep] = []
     for i, url in enumerate(urls):
@@ -87,9 +105,13 @@ def _history_to_route_map(history: AgentHistoryList) -> RouteMap:
             )
         )
 
+    summary = history.final_result() or "Scout completed"
+    if login_wall:
+        summary += " [로그인 필요 — 인증 후 재시도 필요]"
+
     return RouteMap(
         steps=steps,
         final_url=(urls[-1] or "") if urls else "",
-        scout_summary=history.final_result() or "Scout completed",
+        scout_summary=summary,
         scout_completed=scout_completed,
     )

@@ -3,6 +3,7 @@ import inspect
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -16,13 +17,14 @@ from pydantic import BaseModel
 
 from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
-from surfy.adapters.llm import AnthropicAdapter
+from surfy.adapters.llm import LangChainLLMAdapter
 from surfy.adapters.research import DdgsSearchAdapter
 from surfy.config import Settings
 from surfy.domain.models import (
     CancelledMessage,
     CancelMessage,
     ChatMessage,
+    ClearMessage,
     ConnectedMessage,
     DomHighlightMessage,
     ErrorMessage,
@@ -51,7 +53,6 @@ from surfy.domain.services import ActorService, EvaluatorService, PlannerService
 from surfy.graph import compile_graph
 from surfy.state import AgentState
 
-THREAD_ID = "surfy-extension"
 HEARTBEAT_INTERVAL_SECONDS = 30.0
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,10 @@ BROWSER_WATCHDOG_INTERVAL = 5.0
 BROWSER_WATCHDOG_MAX_FAILURES = 3
 
 
+def _new_thread_id() -> str:
+    return f"surfy-{uuid.uuid4().hex[:8]}"
+
+
 @dataclass
 class SessionStore:
     websocket: WebSocket | None = None
@@ -94,6 +99,7 @@ class SessionStore:
     chat_queue: list[str] = field(default_factory=list)
     last_activity_at: float = 0.0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    thread_id: str = field(default_factory=_new_thread_id)
 
 
 _SESSION = SessionStore()
@@ -294,7 +300,7 @@ async def _get_or_create_runtime() -> ServerRuntime:
 
     _ensure_asyncio_create_task_compat()
 
-    settings = Settings(anthropic_api_key="dummy")  # type: ignore
+    settings = Settings()
     browser_cfg = settings.browser
 
     browser: BrowserUseAdapter | None = None
@@ -306,21 +312,32 @@ async def _get_or_create_runtime() -> ServerRuntime:
         )
         shared_session = browser.get_session()
 
-        llm = AnthropicAdapter(use_vision=True, model_name=settings.llm.model_name)
-        agent_llm = BrowserUseChatAnthropic(model=settings.llm.model_name)
-
-        # Scout LLM: Gemini 3 Flash (fallback to Claude)
         google_api_key = settings.google_api_key or os.environ.get("GOOGLE_API_KEY")
+        anthropic_api_key = settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
+
         if google_api_key:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            chat_model = ChatGoogleGenerativeAI(model=settings.llm.model_name, google_api_key=google_api_key)
             scout_llm = BrowserUseChatGoogle(
                 model=settings.scout.model_name,
                 api_key=google_api_key,
                 thinking_budget=0,
             )
+            logger.info("LLM using Gemini: %s", settings.llm.model_name)
             logger.info("Scout using Gemini: %s", settings.scout.model_name)
-        else:
+        elif anthropic_api_key:
+            from langchain_anthropic import ChatAnthropic
+
+            chat_model = ChatAnthropic(model_name=settings.llm.model_name, timeout=None, stop=None)
+            agent_llm = BrowserUseChatAnthropic(model=settings.llm.model_name)
             scout_llm = agent_llm
-            logger.warning("GOOGLE_API_KEY not set — Scout falling back to Claude")
+            logger.info("LLM using Anthropic: %s", settings.llm.model_name)
+            logger.warning("Scout falling back to Claude (no GOOGLE_API_KEY)")
+        else:
+            raise RuntimeError("Either GOOGLE_API_KEY or ANTHROPIC_API_KEY must be set")
+
+        llm = LangChainLLMAdapter(model=chat_model, use_vision=settings.llm.use_vision)
 
         agent_adapter = BrowserUseAgentAdapter(session=shared_session, llm=scout_llm)
         researcher = ResearcherService(research_port=DdgsSearchAdapter())
@@ -362,7 +379,7 @@ async def _get_or_create_runtime() -> ServerRuntime:
 async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
     try:
         runtime = await _get_or_create_runtime()
-        config = {"configurable": {"thread_id": THREAD_ID}}
+        config = {"configurable": {"thread_id": _SESSION.thread_id}}
 
         async for event in runtime.graph.astream(input_payload, config):
             for node_name, updates in event.items():
@@ -455,6 +472,15 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
         _SESSION.graph_task = None
 
 
+async def _clear_session() -> None:
+    await _cancel_graph_task()
+    _SESSION.current_state = None
+    _SESSION.chat_queue.clear()
+    _SESSION.thread_id = _new_thread_id()
+    logger.info("Session cleared — new thread_id: %s", _SESSION.thread_id)
+    await _send_message(ConnectedMessage(data=ConnectedMessageData(state=None, running=False)))
+
+
 async def _start_run(command: str) -> None:
     if _SESSION.graph_task is not None and not _SESSION.graph_task.done():
         if not _is_browser_alive():
@@ -465,6 +491,7 @@ async def _start_run(command: str) -> None:
             await _send_message(ErrorMessage(data=ErrorMessageData(message="Graph is already running", node=None)))
             return
 
+    _SESSION.thread_id = _new_thread_id()
     _SESSION.current_state = _to_plain(_initial_state(command))
     _SESSION.chat_queue.clear()
     _ensure_asyncio_create_task_compat()
@@ -549,6 +576,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 await _send_message(
                     ConnectedMessage(data=ConnectedMessageData(state=_SESSION.current_state, running=task_running))
                 )
+            elif isinstance(message, ClearMessage):
+                async with _SESSION.lock:
+                    await _clear_session()
             elif isinstance(message, ChatMessage):
                 _SESSION.chat_queue.append(message.data.message)
     except WebSocketDisconnect:

@@ -1,3 +1,3 @@
-from surfy.adapters.llm.anthropic_adapter import AnthropicAdapter
+from surfy.adapters.llm.langchain_adapter import LangChainLLMAdapter
 
-__all__ = ["AnthropicAdapter"]
+__all__ = ["LangChainLLMAdapter"]

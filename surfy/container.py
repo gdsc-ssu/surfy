@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 from dependency_injector import containers, providers
 
 from surfy.adapters.browser import BrowserUseAdapter
-from surfy.adapters.llm import AnthropicAdapter
+from surfy.adapters.llm import LangChainLLMAdapter
 from surfy.config import Settings
 from surfy.domain.services import ActorService
 
@@ -26,10 +26,12 @@ class Container(containers.DeclarativeContainer):
     config = providers.Singleton(Settings)
 
     # Adapters
+    # TODO: container.py는 현재 미사용. server.py가 직접 wiring.
+    # LangChainLLMAdapter는 BaseChatModel 인스턴스를 받으므로 DI 컨테이너에서
+    # 직접 생성하려면 chat_model provider가 필요함.
     llm = providers.Singleton(
-        AnthropicAdapter,
+        LangChainLLMAdapter,
         use_vision=config.provided.llm.use_vision,
-        model_name=config.provided.llm.model_name,
     )
 
     browser = providers.Resource(
