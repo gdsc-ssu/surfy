@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import inspect
 import logging
+import os
 from typing import cast
 
 from browser_use.llm import ChatAnthropic as BrowserUseChatAnthropic
@@ -10,8 +11,9 @@ from langgraph.types import Command
 
 from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
-from surfy.adapters.llm import AnthropicAdapter
+from surfy.adapters.llm import LangChainLLMAdapter
 from surfy.adapters.research import DdgsSearchAdapter
+from surfy.config import Settings
 from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ResearcherService, ScoutService
 from surfy.graph import compile_graph
 from surfy.state import AgentState
@@ -37,10 +39,28 @@ async def run(command: str) -> AgentState:
     _ensure_asyncio_create_task_compat()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
+    settings = Settings()
     browser = await BrowserUseAdapter.create(use_system_chrome=True)
     shared_session = browser.get_session()
-    llm = AnthropicAdapter(use_vision=True, model_name="claude-sonnet-4-20250514")
-    agent_llm = BrowserUseChatAnthropic(model="claude-sonnet-4-20250514")
+
+    google_api_key = settings.google_api_key or os.environ.get("GOOGLE_API_KEY")
+    anthropic_api_key = settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
+
+    if google_api_key:
+        from browser_use.llm import ChatGoogle as BrowserUseChatGoogle
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        chat_model = ChatGoogleGenerativeAI(model=settings.llm.model_name, google_api_key=google_api_key)
+        agent_llm = BrowserUseChatGoogle(model=settings.scout.model_name, api_key=google_api_key, thinking_budget=0)
+    elif anthropic_api_key:
+        from langchain_anthropic import ChatAnthropic
+
+        chat_model = ChatAnthropic(model_name=settings.llm.model_name, timeout=None, stop=None)
+        agent_llm = BrowserUseChatAnthropic(model=settings.llm.model_name)
+    else:
+        raise RuntimeError("Either GOOGLE_API_KEY or ANTHROPIC_API_KEY must be set")
+
+    llm = LangChainLLMAdapter(model=chat_model, use_vision=settings.llm.use_vision)
 
     agent_adapter = BrowserUseAgentAdapter(session=shared_session, llm=agent_llm)
     researcher = ResearcherService(research_port=DdgsSearchAdapter())

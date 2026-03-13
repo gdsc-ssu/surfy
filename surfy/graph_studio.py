@@ -12,10 +12,11 @@ import logging
 
 from browser_use import BrowserSession
 from browser_use.llm import ChatAnthropic as BrowserUseChatAnthropic
+from langchain_anthropic import ChatAnthropic
 
 from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
-from surfy.adapters.llm import AnthropicAdapter
+from surfy.adapters.llm import LangChainLLMAdapter
 from surfy.adapters.research import DdgsSearchAdapter
 from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ResearcherService, ScoutService
 from surfy.graph import compile_graph
@@ -34,7 +35,8 @@ def _make_graph():
     # BrowserUseAdapter와 BrowserUseAgentAdapter는 세션 객체를 주입받음.
 
     browser = BrowserUseAdapter(session=agent_session)
-    llm = AnthropicAdapter(use_vision=True, model_name="claude-sonnet-4-20250514")
+    chat_model = ChatAnthropic(model_name="claude-sonnet-4-20250514", timeout=None, stop=None)
+    llm = LangChainLLMAdapter(model=chat_model, use_vision=True)
     agent_llm = BrowserUseChatAnthropic(model="claude-sonnet-4-20250514")
 
     agent_adapter = BrowserUseAgentAdapter(session=agent_session, llm=agent_llm)
