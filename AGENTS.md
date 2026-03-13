@@ -14,9 +14,34 @@ make typecheck      # uv run pyright surfy/
 make test           # uv run pytest tests/ -v --ignore=tests/test_phase1_integration.py -m "not real"
 make fix            # auto-fix lint + format
 
+# Server & Browser
+make chrome         # Chrome 종료 후 CDP 모드로 재시작 (:9222)
+make serve          # 서버 포그라운드 실행 (:8765)
+make restart        # 서버 stop → 백그라운드 재시작
+make stop           # 서버 중지
+
+# Extension
+make ext-build      # extension/dist 빌드
+make ext-dev        # extension dev mode (HMR)
+
 # Single test
 uv run pytest tests/test_evaluator.py -v
 uv run pytest tests/test_evaluator.py -v -k "test_url_mismatch"
+```
+
+### AI 에이전트 개발 시 서버 운영
+
+코드 수정 후 테스트할 때는 `make restart`로 서버를 재시작한다. Chrome은 `make chrome`으로 한 번만 띄우면 되고, Extension은 `make ext-build` 후 `chrome://extensions`에서 리로드한다.
+
+```bash
+# 전체 개발 환경 셋업 (최초 1회)
+make chrome         # Chrome CDP 시작
+make serve          # 서버 시작
+make ext-build      # Extension 빌드 + Chrome에서 로드
+
+# 코드 수정 후 반복
+make restart        # 서버만 재시작 (Chrome, Extension은 유지)
+make ext-build      # Extension 코드 변경 시에만
 ```
 
 ## Architecture — Hexagonal (Ports & Adapters)
@@ -82,6 +107,29 @@ class Container(containers.DeclarativeContainer):
 adapter = AnthropicAdapter(model_name="claude-sonnet-4-5-20250929")
 service = ActorService(browser=adapter, llm=adapter)
 ```
+
+## LLM Provider Configuration
+
+Surfy supports two LLM providers: **Gemini** (default) and **Anthropic** (fallback).
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GOOGLE_API_KEY` | (required) | Google AI API key — https://aistudio.google.com/apikey |
+| `ANTHROPIC_API_KEY` | (optional) | Anthropic API key — https://console.anthropic.com |
+| `LLM_PROVIDER` | `gemini` | LLM provider (`gemini` or `anthropic`) |
+| `LLM_MODEL_NAME` | `gemini-2.0-flash` | Model name for Actor/Planner/Evaluator |
+| `LLM_USE_VISION` | `false` | Enable screenshot in LLM prompts |
+
+### Provider Selection Logic
+
+Provider is selected at runtime based on available API keys:
+1. `GOOGLE_API_KEY` set → Gemini for main LLM + Scout
+2. Only `ANTHROPIC_API_KEY` set → Claude for main LLM + Scout
+3. Neither set → RuntimeError
+
+> Note: `langchain-anthropic` is always required as a dependency (browser-use uses it internally).
 
 ## Code Style
 
