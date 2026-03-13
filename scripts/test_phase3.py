@@ -2,7 +2,7 @@
 
 사용법:
 1. Chrome을 --remote-debugging-port=9222로 실행:
-   /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+   /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222
 
 2. ANTHROPIC_API_KEY 환경변수 설정:
    export ANTHROPIC_API_KEY=your_api_key
@@ -15,8 +15,10 @@ import asyncio
 import logging
 import sys
 
+from langchain_anthropic import ChatAnthropic
+
 from surfy.adapters.browser import BrowserUseAdapter
-from surfy.adapters.llm import AnthropicAdapter
+from surfy.adapters.llm import LangChainLLMAdapter
 from surfy.domain.services import ActorService, EvaluatorService, PlannerService
 
 logging.basicConfig(
@@ -45,7 +47,8 @@ async def main():
         logger.error("Make sure Chrome is running with --remote-debugging-port=9222")
         sys.exit(1)
 
-    llm = AnthropicAdapter(use_vision=True, model_name=MODEL_NAME)
+    chat_model = ChatAnthropic(model_name=MODEL_NAME, timeout=None, stop=None)
+    llm = LangChainLLMAdapter(model=chat_model, use_vision=True)
     logger.info("LLM adapter created")
 
     # 2. 서비스 초기화
