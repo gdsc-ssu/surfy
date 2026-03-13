@@ -1,6 +1,6 @@
 """Scout adapter의 history 변환 로직 단위 테스트."""
 
-from surfy.adapters.browser.agent_adapter import _history_to_route_map
+from surfy.adapters.browser.agent_adapter import _history_to_route_map, _is_login_wall
 
 
 class MockAgentHistoryList:
@@ -66,3 +66,46 @@ def test_history_to_route_map_sets_scout_completed_false_when_failed() -> None:
     route_map = _history_to_route_map(history)  # type: ignore[arg-type]
 
     assert route_map.scout_completed is False
+
+
+def test_login_wall_detected_on_login_url() -> None:
+    assert _is_login_wall([None, "https://maru.org/login?redirect=/eventhall/reserve"]) is True
+    assert _is_login_wall(["https://example.com/signin"]) is True
+    assert _is_login_wall(["https://example.com/auth/callback"]) is True
+    assert _is_login_wall(["https://example.com/sign-in"]) is True
+    assert _is_login_wall(["https://example.com/sso/login"]) is True
+
+
+def test_login_wall_not_detected_on_normal_url() -> None:
+    assert _is_login_wall(["https://example.com/dashboard"]) is False
+    assert _is_login_wall(["https://example.com/eventhall/calendar"]) is False
+    assert _is_login_wall([]) is False
+    assert _is_login_wall([None]) is False
+
+
+def test_history_to_route_map_overrides_scout_completed_on_login_wall() -> None:
+    history = MockAgentHistoryList(
+        urls=["https://example.com", "https://example.com/login?redirect=/reserve"],
+        action_names=["go_to_url", "click_element"],
+        final_result="로그인 페이지 도달",
+        is_successful=True,
+    )
+
+    route_map = _history_to_route_map(history)  # type: ignore[arg-type]
+
+    assert route_map.scout_completed is False
+    assert "로그인 필요" in route_map.scout_summary
+
+
+def test_history_to_route_map_keeps_scout_completed_on_non_login_success() -> None:
+    history = MockAgentHistoryList(
+        urls=["https://example.com", "https://example.com/dashboard"],
+        action_names=["go_to_url", "click_element"],
+        final_result="탐색 완료",
+        is_successful=True,
+    )
+
+    route_map = _history_to_route_map(history)  # type: ignore[arg-type]
+
+    assert route_map.scout_completed is True
+    assert "로그인 필요" not in route_map.scout_summary
