@@ -3,7 +3,7 @@ import asyncio
 from surfy.domain.ports import HumanPort
 
 
-class CliAdapter(HumanPort):
+class CliAdapter(HumanPort): # HuanPort ABC 구현
     """터미널 입출력으로 사용자와 상호작용하는 어댑터."""
 
     async def ask(self, question: str) -> str:

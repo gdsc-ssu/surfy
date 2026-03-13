@@ -278,3 +278,83 @@ async def test_plan_modification_resume_triggers_replan_and_new_approval_interru
 
     after_resume = await graph.aget_state(config)
     assert after_resume.next == ("plan_approval",)
+
+
+@pytest.mark.asyncio
+async def test_human_gateway_triggers_after_retry_exhausted_and_passes_feedback_to_planner():
+    """retry 소진 시 human_gateway 진입 → 사용자 피드백 → Planner replan 시나리오 검증."""
+    from surfy.domain.models import EvalResult, PageState, StepResult
+
+    researcher = MagicMock()
+    researcher.research = AsyncMock(return_value=None)
+
+    scout = MagicMock()
+    scout.scout = AsyncMock(return_value=RouteMap(steps=[], final_url="https://example.com", scout_summary="요약"))
+
+    initial_plan = Plan(
+        anchor="검색 결과 확인",
+        anchor_rationale="테스트",
+        tasks=[Task(description="검색창에 입력", success_criteria=SuccessCriteria(text_visible="결과"))],
+    )
+    replanned = Plan(
+        anchor="검색 결과 확인",
+        anchor_rationale="사용자 피드백 반영",
+        tasks=[Task(description="돋보기 아이콘 클릭 후 입력", success_criteria=SuccessCriteria(text_visible="결과"))],
+    )
+
+    planner = MagicMock()
+    planner.create_plan = AsyncMock(return_value=initial_plan)
+    planner.next_tasks = AsyncMock()
+    planner.replan = AsyncMock(return_value=replanned)
+
+    actor = MagicMock()
+    actor.execute_task = AsyncMock(
+        return_value=StepResult(success=False, message="검색창을 찾을 수 없음", page_state=PageState(url="https://example.com", title="예제", dom_text="예제 페이지"))
+    ) # Actor가 항상 실패하도록 설정
+
+    evaluator = MagicMock()
+    evaluator.evaluate = AsyncMock(return_value=EvalResult(success=False, reason="검색창을 찾을 수 없습니다"))
+
+    graph = compile_graph(
+        scout=scout,
+        planner=planner,
+        actor=actor,
+        evaluator=evaluator,
+        researcher=researcher,
+        checkpointer=MemorySaver(),
+    )
+
+    state = _initial_state("네이버에서 맛집 검색")
+    state["max_retries"] = 0  # 즉시 human_gateway로 가도록 설정
+    config = cast(RunnableConfig, {"configurable": {"thread_id": "human_gateway_test"}})
+
+    # 1단계: plan_approval까지 실행
+    async for _ in graph.astream(state, config):
+        pass
+    approval_state = await graph.aget_state(config)
+    assert approval_state.next == ("plan_approval",)
+
+    # 2단계: plan 승인 → actor 실행 → evaluator 실패 → human_gateway 진입
+    async for _ in graph.astream(Command(resume={"approved": True}), config): # 사용자가 "승인" 버튼 누른것처럼
+        pass
+    gateway_state = await graph.aget_state(config)
+    assert gateway_state.next == ("human_gateway",), f"Expected human_gateway, got {gateway_state.next}" # human_gateway에서 멈췄는지 확인
+
+    # interrupt payload 검증
+    interrupt_payload = gateway_state.tasks[0].interrupts[0].value
+    assert interrupt_payload["type"] == "human_gateway"
+    assert interrupt_payload["failed_task"] == "검색창에 입력" # 어떤 태스크가 실패했는지
+    assert "검색창" in interrupt_payload["reason"] # 왜 실패했는지
+
+    # 3단계: 사용자 피드백으로 resume → planner replan
+    user_feedback = "돋보기 아이콘을 먼저 클릭해봐"
+    async for _ in graph.astream(Command(resume={"feedback": user_feedback}), config):
+        pass
+
+    # planner.replan이 user_feedback으로 호출됐는지 검증
+    planner.replan.assert_awaited() # replan이 호출됐는지
+    assert planner.replan.await_args.args[2] == user_feedback # 피드백이 전달됐는지
+
+    # 최종 상태: 새 plan으로 plan_approval 대기
+    final_state = await graph.aget_state(config)
+    assert final_state.next == ("plan_approval",) # 새 plan으로 다시 승인 대기
