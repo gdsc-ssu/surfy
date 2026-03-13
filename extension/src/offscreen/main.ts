@@ -5,7 +5,7 @@ type ServerMessageType =
   | "step_progress";
 
 // Client message types
-type ClientMessageType = "run" | "resume" | "chat" | "cancel" | "heartbeat";
+type ClientMessageType = "run" | "resume" | "chat" | "cancel" | "clear" | "heartbeat";
 
 // Internal extension message routing
 interface OffscreenMessage {
