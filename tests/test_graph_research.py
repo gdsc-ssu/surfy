@@ -309,7 +309,11 @@ async def test_human_gateway_triggers_after_retry_exhausted_and_passes_feedback_
 
     actor = MagicMock()
     actor.execute_task = AsyncMock(
-        return_value=StepResult(success=False, message="검색창을 찾을 수 없음", page_state=PageState(url="https://example.com", title="예제", dom_text="예제 페이지"))
+        return_value=StepResult(
+            success=False,
+            message="검색창을 찾을 수 없음",
+            page_state=PageState(url="https://example.com", title="예제", dom_text="예제 페이지"),
+        )
     ) # Actor가 항상 실패하도록 설정
 
     evaluator = MagicMock()
@@ -338,7 +342,9 @@ async def test_human_gateway_triggers_after_retry_exhausted_and_passes_feedback_
     async for _ in graph.astream(Command(resume={"approved": True}), config): # 사용자가 "승인" 버튼 누른것처럼
         pass
     gateway_state = await graph.aget_state(config)
-    assert gateway_state.next == ("human_gateway",), f"Expected human_gateway, got {gateway_state.next}" # human_gateway에서 멈췄는지 확인
+    assert gateway_state.next == ("human_gateway",), (
+        f"Expected human_gateway, got {gateway_state.next}"  # human_gateway에서 멈췄는지 확인
+    )
 
     # interrupt payload 검증
     interrupt_payload = gateway_state.tasks[0].interrupts[0].value
