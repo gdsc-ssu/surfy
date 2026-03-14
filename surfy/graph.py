@@ -76,7 +76,7 @@ def compile_graph(
 
         user_feedback = state.get("user_feedback")
         if user_feedback and plan is not None:
-            failed_task = plan.tasks[0] if plan.tasks else Task(description="")
+            failed_task = _current_task(state) or (plan.tasks[0] if plan.tasks else Task(description=""))
             replanned = await planner.replan(plan, failed_task, user_feedback)
             replanned.anchor = plan.anchor
             if not replanned.tasks:
