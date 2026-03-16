@@ -148,6 +148,78 @@ extension/           # Chrome Extension MV3
 
 자세한 설계는 [`docs/0-initial-plan.md`](docs/0-initial-plan.md) 참조.
 
+## Observability
+
+LangGraph 노드 실행, LLM prompt/response, 상태 전이를 추적할 수 있습니다. 두 가지 옵션 중 선택하세요.
+
+| | LangSmith (SaaS) | Langfuse (Self-hosted) |
+|---|---|---|
+| 비용 | Free 5,000 traces/month, 팀 초대 시 $39/user/month | 무료 (Docker로 직접 운영) |
+| 설치 | 환경변수 3개 | Docker Compose + 환경변수 3개 |
+| 팀 공유 | 유료 플랜 필요 | 무제한 사용자, 무료 |
+| 적합한 경우 | 개인 개발, 빠른 시작 | 팀 QA/디버깅, 비용 제한 환경 |
+
+### LangSmith
+
+```bash
+# .env에 추가
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_pt_xxxx    # https://smith.langchain.com 에서 발급
+LANGSMITH_PROJECT=surfy
+```
+
+대시보드: https://smith.langchain.com
+
+### Langfuse (Self-hosted)
+
+Docker가 필요합니다. PostgreSQL, ClickHouse, Redis, MinIO, Langfuse가 한 번에 올라갑니다.
+
+**1단계: Langfuse 서버 실행**
+
+```bash
+docker compose -f docker-compose.langfuse.yml up -d
+```
+
+모든 컨테이너가 healthy 상태가 될 때까지 30초 정도 걸립니다.
+
+**2단계: 계정 생성 및 API 키 발급**
+
+1. http://localhost:3000 접속
+2. **Sign Up**을 클릭하여 계정 생성 (이메일, 비밀번호 자유롭게 설정)
+3. Organization 이름 입력 (예: `surfy`)
+4. 로그인 후 좌측 하단 **Settings** -> **API Keys** -> **Create New API Key**
+5. 생성된 **Public Key**와 **Secret Key**를 복사 (Secret Key는 이 시점에만 표시됨)
+
+**3단계: .env에 키 등록**
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-xxxx    # 2단계에서 복사한 Public Key
+LANGFUSE_SECRET_KEY=sk-lf-xxxx    # 2단계에서 복사한 Secret Key
+LANGFUSE_BASE_URL=http://localhost:3000
+```
+
+**4단계: Surfy 서버 재시작**
+
+```bash
+uv run python main.py --serve --port 8765
+```
+
+서버 로그에 `Langfuse tracing enabled`가 출력되면 정상. 이후 에이전트 실행 시 자동으로 trace가 기록됩니다.
+
+대시보드에서 확인: http://localhost:3000 -> Traces 탭
+
+환경변수가 없으면 트레이싱이 비활성화되므로 기존 동작에 영향 없음. 팀원 초대는 Settings -> Members에서 무제한, 무료.
+
+### LangGraph Studio
+
+그래프 노드를 실시간 시각화하고 시간여행 디버깅이 가능합니다.
+
+```bash
+pip install "langgraph-cli[inmem]"
+langgraph dev
+# → http://127.0.0.1:8123
+```
+
 ## Contributing
 
 [Project Board](https://github.com/orgs/gdsc-ssu/projects/11)에서 이슈를 확인하세요.
