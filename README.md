@@ -172,19 +172,43 @@ LANGSMITH_PROJECT=surfy
 
 ### Langfuse (Self-hosted)
 
-```bash
-# 1. Langfuse 서버 실행 (PostgreSQL + Langfuse 웹서버)
-docker compose -f docker-compose.langfuse.yml up -d
+Docker가 필요합니다. PostgreSQL, ClickHouse, Redis, MinIO, Langfuse가 한 번에 올라갑니다.
 
-# 2. .env에 추가 (headless init으로 자동 생성된 키)
-LANGFUSE_PUBLIC_KEY=pk-lf-local
-LANGFUSE_SECRET_KEY=sk-lf-local
+**1단계: Langfuse 서버 실행**
+
+```bash
+docker compose -f docker-compose.langfuse.yml up -d
+```
+
+모든 컨테이너가 healthy 상태가 될 때까지 30초 정도 걸립니다.
+
+**2단계: 계정 생성 및 API 키 발급**
+
+1. http://localhost:3000 접속
+2. **Sign Up**을 클릭하여 계정 생성 (이메일, 비밀번호 자유롭게 설정)
+3. Organization 이름 입력 (예: `surfy`)
+4. 로그인 후 좌측 하단 **Settings** -> **API Keys** -> **Create New API Key**
+5. 생성된 **Public Key**와 **Secret Key**를 복사 (Secret Key는 이 시점에만 표시됨)
+
+**3단계: .env에 키 등록**
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-xxxx    # 2단계에서 복사한 Public Key
+LANGFUSE_SECRET_KEY=sk-lf-xxxx    # 2단계에서 복사한 Secret Key
 LANGFUSE_BASE_URL=http://localhost:3000
 ```
 
-Headless init으로 org/project/API 키가 자동 생성되므로 별도 설정 불필요. 서버 시작 시 환경변수를 감지하여 자동으로 트레이싱이 활성화됩니다. 환경변수가 없으면 비활성.
+**4단계: Surfy 서버 재시작**
 
-대시보드: http://localhost:3000 (초기 로그인: `admin@surfy.dev` / `changeme`, 팀원 초대 무제한)
+```bash
+uv run python main.py --serve --port 8765
+```
+
+서버 로그에 `Langfuse tracing enabled`가 출력되면 정상. 이후 에이전트 실행 시 자동으로 trace가 기록됩니다.
+
+대시보드에서 확인: http://localhost:3000 -> Traces 탭
+
+환경변수가 없으면 트레이싱이 비활성화되므로 기존 동작에 영향 없음. 팀원 초대는 Settings -> Members에서 무제한, 무료.
 
 ### LangGraph Studio
 
