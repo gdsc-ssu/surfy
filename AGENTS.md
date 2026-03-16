@@ -260,9 +260,18 @@ Chrome에서 로드: `chrome://extensions` → 개발자 모드 → 압축해제
 - `surfy/domain/models/messages.py` — WebSocket 메시지 프로토콜 모델
 - `extension/` — Chrome Extension MV3 (React + Tailwind + Vite)
 
-## Observability (LangSmith + LangGraph Studio)
+## Observability (LangSmith / Langfuse + LangGraph Studio)
 
-### LangSmith (트레이싱)
+두 가지 트레이싱 옵션이 있다. 둘 다 동시에 켤 수도 있지만, 일반적으로 하나만 선택.
+
+| | LangSmith (SaaS) | Langfuse (Self-hosted) |
+|---|---|---|
+| 비용 | Free 5,000 traces/month, 팀 초대 시 $39/user/month | 무료 (Docker로 직접 운영) |
+| 설치 | 환경변수 3개 | Docker Compose + 환경변수 3개 |
+| 팀 공유 | 유료 플랜 필요 | 무제한 사용자, 무료 |
+| 적합한 경우 | 개인 개발, 빠른 시작 | 팀 QA/디버깅, 비용 제한 환경 |
+
+### LangSmith (SaaS 트레이싱)
 
 Zero-code 설정 — 환경변수 3개만 추가하면 LangGraph 노드 + LLM 호출 자동 추적.
 
@@ -273,10 +282,44 @@ LANGSMITH_API_KEY=lsv2_pt_xxxx    # https://smith.langchain.com 에서 발급
 LANGSMITH_PROJECT=surfy
 ```
 
-- Free tier: 5,000 traces/month
+- Free tier: 5,000 traces/month, 14일 보존
 - LangGraph 노드 실행, LLM prompt/response, 상태 전이 자동 캡처
 - browser-use Agent 내부는 자동 트레이싱 안 됨 → `@traceable` 래퍼 필요 시 추가
 - 대시보드: https://smith.langchain.com
+
+### Langfuse (Self-hosted 트레이싱)
+
+팀원들이 무료로 트레이스를 확인할 수 있는 오픈소스 대안. MIT 라이선스.
+
+#### 1. Langfuse 서버 실행
+
+```bash
+# 프로젝트 루트에서
+docker compose -f docker-compose.langfuse.yml up -d
+```
+
+- PostgreSQL + Langfuse 웹 서버가 `http://localhost:3000`에 뜸
+- 최초 접속 시 회원가입 → 프로젝트 생성 → API 키 발급
+
+#### 2. 환경변수 설정
+
+```bash
+# .env에 추가
+LANGFUSE_PUBLIC_KEY=pk-lf-xxxx
+LANGFUSE_SECRET_KEY=sk-lf-xxxx
+LANGFUSE_BASE_URL=http://localhost:3000
+```
+
+#### 3. 동작 방식
+
+- `surfy/observability.py`의 `create_langfuse_handler()`가 환경변수를 감지하여 `langfuse.langchain.CallbackHandler` 생성
+- `server.py`에서 `compiled_graph.with_config({"callbacks": [handler]})`로 자동 연결
+- 환경변수가 없으면 핸들러를 생성하지 않음 — 성능 영향 없음
+
+#### 4. 대시보드
+
+- `http://localhost:3000`에서 트레이스 확인
+- 팀원 초대: Settings → Members → 이메일로 초대 (무제한, 무료)
 
 ### LangGraph Studio (시각화 & 데모)
 
@@ -297,8 +340,9 @@ langgraph dev
 ### 디버깅 워크플로우
 
 ```bash
-# 1. LangSmith로 최근 실행 확인
-#    → https://smith.langchain.com 에서 프로젝트 선택 → Runs 탭
+# 1. LangSmith 또는 Langfuse로 최근 실행 확인
+#    → LangSmith: https://smith.langchain.com
+#    → Langfuse: http://localhost:3000
 
 # 2. LangGraph Studio로 인터랙티브 디버깅
 langgraph dev
@@ -310,9 +354,10 @@ uv run python main.py "네이버에서 오늘 서울 날씨 검색해줘"
 
 ### 주의사항
 
-- LangSmith API 키는 `.env`에만 넣고, **절대 코드에 하드코딩하지 말 것**
-- `LANGSMITH_TRACING=true`가 없으면 트레이싱 비활성 (성능 영향 없음)
-- Studio는 로컬 개발용 — 프로덕션에서는 LangSmith 대시보드 사용
+- API 키는 `.env`에만 넣고, **절대 코드에 하드코딩하지 말 것**
+- `LANGSMITH_TRACING=true`가 없으면 LangSmith 트레이싱 비활성
+- `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`가 없으면 Langfuse 트레이싱 비활성
+- Studio는 로컬 개발용 — 프로덕션에서는 LangSmith 또는 Langfuse 대시보드 사용
 
 ## Behavioral Rules
 

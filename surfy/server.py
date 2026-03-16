@@ -49,6 +49,7 @@ from surfy.domain.models.messages import (
 )
 from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ResearcherService, ScoutService
 from surfy.graph import compile_graph
+from surfy.observability import create_langfuse_handler
 from surfy.state import AgentState
 
 THREAD_ID = "surfy-extension"
@@ -329,7 +330,7 @@ async def _get_or_create_runtime() -> ServerRuntime:
         scout = ScoutService(scout=agent_adapter)
         evaluator = EvaluatorService(browser=browser, llm=llm)
 
-        graph = compile_graph(
+        compiled_graph = compile_graph(
             scout=scout,
             planner=planner,
             actor=actor,
@@ -338,6 +339,12 @@ async def _get_or_create_runtime() -> ServerRuntime:
             checkpointer=MemorySaver(),
             scout_max_steps=settings.scout.max_steps,
         )
+
+        langfuse_handler = create_langfuse_handler()
+        if langfuse_handler is not None:
+            graph = compiled_graph.with_config({"callbacks": [langfuse_handler]})
+        else:
+            graph = compiled_graph
 
         _SESSION.runtime = ServerRuntime(
             graph=graph,
