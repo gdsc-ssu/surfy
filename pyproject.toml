@@ -19,6 +19,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "websockets>=14.0",
+    "langfuse>=2.0",
 ]
 
 [dependency-groups]

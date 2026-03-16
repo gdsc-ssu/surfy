@@ -1,0 +1,41 @@
+# Langfuse self-hosted (MIT open source)
+# Usage: docker compose -f docker-compose.langfuse.yml up -d
+# Dashboard: http://localhost:3000
+#
+# 최초 접속 시 회원가입 → 프로젝트 생성 → Settings에서 API 키 발급
+# 발급받은 키를 .env에 LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY로 설정
+
+services:
+  langfuse-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    restart: unless-stopped
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: surfy-langfuse-dev-secret
+      SALT: surfy-langfuse-dev-salt
+      TELEMETRY_ENABLED: "true"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+
+volumes:
+  langfuse-db-data:
