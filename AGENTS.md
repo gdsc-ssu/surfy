@@ -294,23 +294,9 @@ langgraph dev
 - 엔트리포인트: `surfy/graph_studio.py:graph`
 - Studio에서 그래프 구조 + 상태 + 노드별 입출력 확인 가능
 
-### 디버깅 워크플로우
-
-```bash
-# 1. LangSmith로 최근 실행 확인
-#    → https://smith.langchain.com 에서 프로젝트 선택 → Runs 탭
-
-# 2. LangGraph Studio로 인터랙티브 디버깅
-langgraph dev
-#    → 브라우저에서 http://127.0.0.1:8123 접속
-
-# 3. E2E 테스트 (실제 브라우저 필요)
-uv run python main.py "네이버에서 오늘 서울 날씨 검색해줘"
-```
-
 ### 주의사항
 
-- LangSmith API 키는 `.env`에만 넣고, **절대 코드에 하드코딩하지 말 것**
+- API 키는 `.env`에만 넣고, **절대 코드에 하드코딩하지 말 것**
 - `LANGSMITH_TRACING=true`가 없으면 트레이싱 비활성 (성능 영향 없음)
 - Studio는 로컬 개발용 — 프로덕션에서는 LangSmith 대시보드 사용
 

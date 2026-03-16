@@ -26,6 +26,20 @@ class ScoutSettings(BaseSettings):
     max_steps: int = 5
 
 
+class LangfuseSettings(BaseSettings):
+    """Langfuse 관측성 설정. 환경변수가 설정되어 있으면 자동 활성화."""
+
+    model_config = SettingsConfigDict(env_prefix="LANGFUSE_", env_file=".env", extra="ignore")
+
+    public_key: str | None = None
+    secret_key: str | None = None
+    base_url: str = "http://localhost:3000"
+
+    @property
+    def enabled(self) -> bool:
+        return self.public_key is not None and self.secret_key is not None
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -35,3 +49,4 @@ class Settings(BaseSettings):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     browser: BrowserSettings = Field(default_factory=BrowserSettings)
     scout: ScoutSettings = Field(default_factory=ScoutSettings)
+    langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
