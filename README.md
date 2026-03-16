@@ -148,6 +148,56 @@ extension/           # Chrome Extension MV3
 
 자세한 설계는 [`docs/0-initial-plan.md`](docs/0-initial-plan.md) 참조.
 
+## Observability
+
+LangGraph 노드 실행, LLM prompt/response, 상태 전이를 추적할 수 있습니다. 두 가지 옵션 중 선택하세요.
+
+| | LangSmith (SaaS) | Langfuse (Self-hosted) |
+|---|---|---|
+| 비용 | Free 5,000 traces/month, 팀 초대 시 $39/user/month | 무료 (Docker로 직접 운영) |
+| 설치 | 환경변수 3개 | Docker Compose + 환경변수 3개 |
+| 팀 공유 | 유료 플랜 필요 | 무제한 사용자, 무료 |
+| 적합한 경우 | 개인 개발, 빠른 시작 | 팀 QA/디버깅, 비용 제한 환경 |
+
+### LangSmith
+
+```bash
+# .env에 추가
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_pt_xxxx    # https://smith.langchain.com 에서 발급
+LANGSMITH_PROJECT=surfy
+```
+
+대시보드: https://smith.langchain.com
+
+### Langfuse (Self-hosted)
+
+```bash
+# 1. Langfuse 서버 실행
+docker compose -f docker-compose.langfuse.yml up -d
+
+# 2. http://localhost:3000 접속 → 회원가입 → 프로젝트 생성 → API 키 발급
+
+# 3. .env에 추가
+LANGFUSE_PUBLIC_KEY=pk-lf-xxxx
+LANGFUSE_SECRET_KEY=sk-lf-xxxx
+LANGFUSE_BASE_URL=http://localhost:3000
+```
+
+서버 시작 시 환경변수를 감지하여 자동으로 트레이싱이 활성화됩니다. 환경변수가 없으면 비활성 상태로 성능 영향 없음.
+
+대시보드: http://localhost:3000 (팀원 초대 무제한, 무료)
+
+### LangGraph Studio
+
+그래프 노드를 실시간 시각화하고 시간여행 디버깅이 가능합니다.
+
+```bash
+pip install "langgraph-cli[inmem]"
+langgraph dev
+# → http://127.0.0.1:8123
+```
+
 ## Contributing
 
 [Project Board](https://github.com/orgs/gdsc-ssu/projects/11)에서 이슈를 확인하세요.
