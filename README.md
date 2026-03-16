@@ -173,20 +173,18 @@ LANGSMITH_PROJECT=surfy
 ### Langfuse (Self-hosted)
 
 ```bash
-# 1. Langfuse 서버 실행
+# 1. Langfuse 서버 실행 (PostgreSQL + Langfuse 웹서버)
 docker compose -f docker-compose.langfuse.yml up -d
 
-# 2. http://localhost:3000 접속 → 회원가입 → 프로젝트 생성 → API 키 발급
-
-# 3. .env에 추가
-LANGFUSE_PUBLIC_KEY=pk-lf-xxxx
-LANGFUSE_SECRET_KEY=sk-lf-xxxx
+# 2. .env에 추가 (headless init으로 자동 생성된 키)
+LANGFUSE_PUBLIC_KEY=pk-lf-local
+LANGFUSE_SECRET_KEY=sk-lf-local
 LANGFUSE_BASE_URL=http://localhost:3000
 ```
 
-서버 시작 시 환경변수를 감지하여 자동으로 트레이싱이 활성화됩니다. 환경변수가 없으면 비활성 상태로 성능 영향 없음.
+Headless init으로 org/project/API 키가 자동 생성되므로 별도 설정 불필요. 서버 시작 시 환경변수를 감지하여 자동으로 트레이싱이 활성화됩니다. 환경변수가 없으면 비활성.
 
-대시보드: http://localhost:3000 (팀원 초대 무제한, 무료)
+대시보드: http://localhost:3000 (초기 로그인: `admin@surfy.dev` / `changeme`, 팀원 초대 무제한)
 
 ### LangGraph Studio
 
