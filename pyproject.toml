@@ -20,6 +20,7 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "websockets>=14.0",
     "langchain-google-genai>=2.0",
+    "langfuse>=2.0",
 ]
 
 [dependency-groups]
