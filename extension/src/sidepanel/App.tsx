@@ -249,6 +249,8 @@ function reducer(state: AppState, action: Action): AppState {
       }
       return { ...state, activityLog: newLog };
     }
+    case "CLEAR":
+      return { ...initialState, connected: state.connected };
     default:
       return state;
   }
@@ -361,6 +363,14 @@ export default function App() {
     });
   };
 
+  const handleClear = () => {
+    dispatch({ type: "CLEAR" });
+    chrome.runtime.sendMessage({
+      source: "sidepanel",
+      payload: { type: "clear", data: {} },
+    });
+  };
+
   const handleRetry = () => {
     chrome.runtime.sendMessage({
       source: "sidepanel",
@@ -382,7 +392,18 @@ export default function App() {
       {/* Minimal Header */}
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <h1 className="text-xl font-bold text-blue-600">Surfy</h1>
-        <ConnectionStatus connected={state.connected} onRetry={handleRetry} />
+        <div className="flex items-center gap-2">
+          {(state.done || state.error || state.activityLog.length > 0) && !state.running && (
+            <button
+              onClick={handleClear}
+              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+              title="세션 초기화"
+            >
+              Clear
+            </button>
+          )}
+          <ConnectionStatus connected={state.connected} onRetry={handleRetry} />
+        </div>
       </header>
 
       {/* Status Panel — scrollable */}
@@ -416,6 +437,7 @@ export default function App() {
           plan={state.plan}
           routeMap={state.routeMap}
           currentTaskIdx={state.currentTaskIdx}
+          done={state.done}
         />
 
         {state.interrupt && (

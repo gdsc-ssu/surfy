@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from string import Template
 
-from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
 from surfy.domain.models import ActorOutput, EvalResult, HistoryEntry, PageState, Task
@@ -17,7 +17,7 @@ from surfy.domain.ports import LLMPort
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
 RECENT_HISTORY_COUNT = 10
 MAX_DOM_TEXT_LENGTH = 5000  # 토큰 제한을 위한 DOM 텍스트 최대 길이
-ANTHROPIC_MAX_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 logger = logging.getLogger(__name__)
 
@@ -46,22 +46,22 @@ def _load_prompty(name: str) -> str:
     return content
 
 
-class AnthropicAdapter(LLMPort):
-    """Anthropic Claude를 사용하는 LLM 어댑터.
+class LangChainLLMAdapter(LLMPort):
+    """LangChain BaseChatModel을 사용하는 LLM 어댑터.
 
     Planner, Actor, Evaluator 세 가지 역할을 수행한다.
     """
 
-    def __init__(self, *, use_vision: bool, model_name: str):
+    def __init__(self, *, model: BaseChatModel, use_vision: bool):
         self._use_vision = use_vision
-        self._model = ChatAnthropic(model_name=model_name)  # type: ignore[call-arg]
+        self._model = model
 
         self._actor_template = _load_prompty("actor")
         self._planner_template = _load_prompty("planner")
         self._evaluator_template = _load_prompty("evaluator")
 
     @property
-    def model(self) -> ChatAnthropic:
+    def model(self) -> BaseChatModel:
         return self._model
 
     @property
@@ -85,12 +85,17 @@ class AnthropicAdapter(LLMPort):
         """Actor용: 현재 페이지 상태와 히스토리를 기반으로 다음 액션 결정."""
         template_str = self._actor_template.replace("{{", "${").replace("}}", "}")
         template = Template(template_str)
+        # DOM 텍스트 길이 제한 (evaluator와 동일한 기준)
+        dom_text = page_state.dom_text
+        if len(dom_text) > MAX_DOM_TEXT_LENGTH:
+            dom_text = dom_text[:MAX_DOM_TEXT_LENGTH] + "\n... (truncated)"
+
         prompt = template.safe_substitute(
             task_description=task.description,
             target_url=task.target_url or "(없음)",
             url=page_state.url,
             title=page_state.title,
-            dom_text=page_state.dom_text,
+            dom_text=dom_text,
             formatted_history=self._format_history(history),
         )
 
@@ -192,11 +197,11 @@ class AnthropicAdapter(LLMPort):
             return HumanMessage(content=prompt)
 
         image_size = len(image_bytes)
-        if image_size > ANTHROPIC_MAX_IMAGE_BYTES:
+        if image_size > MAX_IMAGE_BYTES:
             logger.warning(
-                "Screenshot too large for Anthropic (%d bytes > %d). Sending text-only prompt.",
+                "Screenshot too large (%d bytes > %d). Sending text-only prompt.",
                 image_size,
-                ANTHROPIC_MAX_IMAGE_BYTES,
+                MAX_IMAGE_BYTES,
             )
             return HumanMessage(content=prompt)
 

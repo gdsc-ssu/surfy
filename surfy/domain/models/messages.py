@@ -78,6 +78,11 @@ class GetStatusMessage(BaseMessage):
     data: dict[str, Any] = Field(default_factory=dict)
 
 
+class ClearMessage(BaseMessage):
+    type: Literal["clear"] = "clear"
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
 # --- Server to Client Messages ---
 
 
@@ -192,7 +197,10 @@ class ConnectedMessage(BaseMessage):
     data: ConnectedMessageData
 
 
-ClientMessage = RunMessage | ResumeMessage | ChatMessage | CancelMessage | HeartbeatMessage | GetStatusMessage
+ClientMessage = (
+    RunMessage | ResumeMessage | ChatMessage | CancelMessage
+    | HeartbeatMessage | GetStatusMessage | ClearMessage
+)
 
 
 def parse_client_message(raw: str) -> ClientMessage:
@@ -231,6 +239,8 @@ def parse_client_message(raw: str) -> ClientMessage:
             return HeartbeatMessage.model_validate(data)
         case "get_status":
             return GetStatusMessage.model_validate(data)
+        case "clear":
+            return ClearMessage.model_validate(data)
         case _:
             raise ValueError(f"Unknown message type: {msg_type}")
 
@@ -247,6 +257,7 @@ __all__ = [
     "CancelMessage",
     "HeartbeatMessage",
     "GetStatusMessage",
+    "ClearMessage",
     "NodeStartMessageData",
     "NodeStartMessage",
     "NodeEndMessageData",
