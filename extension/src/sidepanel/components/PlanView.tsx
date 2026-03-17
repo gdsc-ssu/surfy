@@ -6,12 +6,14 @@ interface PlanViewProps {
   plan: Plan | null;
   routeMap: RouteMap | null;
   currentTaskIdx: number;
+  done: boolean;
 }
 
 export const PlanView: React.FC<PlanViewProps> = ({
   plan,
   routeMap,
   currentTaskIdx,
+  done,
 }) => {
   if (!plan) {
     if (routeMap && routeMap.steps && routeMap.steps.length > 0) {
@@ -41,10 +43,17 @@ export const PlanView: React.FC<PlanViewProps> = ({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500 px-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-            <span>이 정보를 바탕으로 실행 계획을 세우고 있습니다...</span>
-          </div>
+          {!done ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500 px-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span>이 정보를 바탕으로 실행 계획을 세우고 있습니다...</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              <span className="text-base">⚠️</span>
+              <span>Scout 탐색만으로 작업이 종료되었습니다. 실행 계획이 생성되지 않았습니다.</span>
+            </div>
+          )}
         </div>
       );
     }

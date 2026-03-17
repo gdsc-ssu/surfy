@@ -452,7 +452,10 @@ async def test_runtime_creation_failure_no_runtime_stored(reset_server_state, mo
             (),
             {
                 "browser": type("B", (), {"cdp_url": None, "use_system_chrome": False, "chrome_profile": "Default"})(),
-                "llm": type("L", (), {"model_name": "test"})(),
+                "llm": type("L", (), {"model_name": "test", "use_vision": True})(),
+                "scout": type("SC", (), {"model_name": "test", "max_steps": 20})(),
+                "google_api_key": None,
+                "anthropic_api_key": "test-key",
             },
         )(),
     )
@@ -490,7 +493,10 @@ async def test_runtime_partial_creation_cleans_up_browser(reset_server_state, mo
             (),
             {
                 "browser": type("B", (), {"cdp_url": None, "use_system_chrome": False, "chrome_profile": "Default"})(),
-                "llm": type("L", (), {"model_name": "test"})(),
+                "llm": type("L", (), {"model_name": "test", "use_vision": True})(),
+                "scout": type("SC", (), {"model_name": "test", "max_steps": 20})(),
+                "google_api_key": None,
+                "anthropic_api_key": "test-key",
             },
         )(),
     )
@@ -500,7 +506,7 @@ async def test_runtime_partial_creation_cleans_up_browser(reset_server_state, mo
         _ = kwargs
         raise RuntimeError("LLM init failed")
 
-    monkeypatch.setattr("surfy.server.AnthropicAdapter", failing_adapter)
+    monkeypatch.setattr("surfy.server.LangChainLLMAdapter", failing_adapter)
 
     with pytest.raises(RuntimeError, match="LLM init failed"):
         await server._get_or_create_runtime()
