@@ -32,7 +32,7 @@ def _load_prompty(name: str) -> str:
     if not prompty_path.exists():
         raise FileNotFoundError(f"Prompt file not found: {prompty_path}")
 
-    content = prompty_path.read_text()
+    content = prompty_path.read_text(encoding="utf-8")
 
     # Split by '---' and take the part after the second '---'
     parts = content.split("---")
