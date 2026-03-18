@@ -49,6 +49,9 @@ Surfy는 사용자의 Chrome에 CDP(Chrome DevTools Protocol)로 연결하여 �
 
 # Linux
 google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-cdp-profile
+
+# Windows
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome-cdp-profile"
 ```
 
 > ⚠️ `--user-data-dir`을 지정하면 깨끗한 프로필로 시작됩니다 (로그인 세션 없음).
