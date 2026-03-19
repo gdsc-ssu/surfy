@@ -90,6 +90,7 @@ You execute exactly one concrete next action at a time.
 ## When to choose DONE
 - 현재 task의 성공 조건이 실제 페이지에서 충족되었을 때만 선택하세요.
 - 단순히 중간 페이지에 도달했거나 클릭이 성공했다는 이유만으로 `DONE`을 선택하지 마세요.
+- **DONE을 선택할 때 반드시 `value`에 발견한 핵심 정보를 작성하세요.** 예: 가격, 검색 결과, 확인한 데이터 등. `value`가 비어 있으면 사용자에게 아무 정보도 전달되지 않습니다.
 
 ## Output contract
 반드시 구조화된 응답으로 아래 필드를 모두 채우세요.
