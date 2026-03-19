@@ -180,7 +180,11 @@ class LangChainLLMAdapter(LLMPort):
 
         try:
             result = await self._model.ainvoke(messages)
-            return str(result.content)
+            content = result.content
+            # Gemini returns list[dict] with 'text' key; Anthropic returns str
+            if isinstance(content, list):
+                return "".join(block.get("text", "") for block in content if isinstance(block, dict))
+            return str(content)
         except Exception as e:
             logger.warning("Report generation failed: %s", e)
             return f"완료된 작업:\n{formatted_results}"
