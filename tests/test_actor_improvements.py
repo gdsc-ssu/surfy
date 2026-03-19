@@ -54,7 +54,9 @@ class MockLLM(LLMPort):
     def __init__(self):
         self.task_descriptions: list[str] = []
 
-    async def decide_action(self, task: Task, page_state: PageState, history: list[HistoryEntry], **kwargs) -> ActorOutput:
+    async def decide_action(
+        self, task: Task, page_state: PageState, history: list[HistoryEntry], **kwargs
+    ) -> ActorOutput:
         self.task_descriptions.append(task.description)
         # 항상 CLICK 반환하여 루프 유도
         return ActorOutput(thinking="Clicking", action_type=ActionType.CLICK, target_id=1)
