@@ -13,7 +13,7 @@ def test_scout_settings_defaults():
         assert settings.model_name == "gemini-3-flash-preview"
         assert settings.use_vision is False
         assert settings.flash_mode is True
-        assert settings.max_steps == 5
+        assert settings.max_steps == 15
 
 
 def test_llm_settings_defaults():

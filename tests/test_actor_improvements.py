@@ -68,6 +68,9 @@ class MockLLM(LLMPort):
     async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:
         return EvalResult(success=True, reason="Mock evaluation")
 
+    async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
+        return f"Report for {command}"
+
 
 def test_page_fingerprint():
     """_page_fingerprint 함수 검증."""

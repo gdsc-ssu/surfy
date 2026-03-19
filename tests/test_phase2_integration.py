@@ -100,6 +100,9 @@ class MockLLM(LLMPort):
         """Mock evaluate — Phase 2 테스트에서는 사용하지 않음."""
         return EvalResult(success=True, reason="Mock evaluation")
 
+    async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
+        return f"Report for {command}"
+
 
 @pytest.mark.asyncio
 async def test_mock_react_loop_completes_on_done():

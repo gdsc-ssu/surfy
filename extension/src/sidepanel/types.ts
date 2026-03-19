@@ -42,9 +42,28 @@ export interface InterruptData {
 }
 
 export interface ChatMessage {
-  sender: "user" | "system";
+  sender: "user" | "system" | "agent";
   text: string;
   timestamp: number;
+  type?: "text" | "activity" | "plan" | "interrupt" | "report";
+  activityData?: {
+    node: string;
+    label: string;
+    icon: string;
+    status: "running" | "done";
+    detail?: string;
+    duration?: string;
+    subSteps?: { step_number: number; description: string; action_type?: string }[];
+  };
+  planData?: {
+    anchor: string;
+    tasks: TaskItem[];
+    anchor_rationale?: string;
+  };
+  interruptData?: InterruptData;
+  reportData?: {
+    summary: string;
+  };
 }
 
 export interface ServerMessage {
@@ -92,6 +111,7 @@ export type Action =
   | { type: "ERROR"; message: string }
   | { type: "RUN_STARTED"; command: string }
   | { type: "INTERRUPT_RESOLVED" }
-  | { type: "CHAT_MESSAGE"; sender: "user" | "system"; text: string }
+  | { type: "CHAT_MESSAGE"; sender: "user" | "system" | "agent"; text: string }
+  | { type: "CHAT_REPORT"; text: string }
   | { type: "STEP_PROGRESS"; data: { node: string; step_number: number; description: string; action_type?: string } }
   | { type: "CLEAR" };

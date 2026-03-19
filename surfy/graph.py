@@ -8,7 +8,14 @@ from langgraph.types import interrupt
 
 from surfy.domain.models import ActionType, ActorOutput, EvalResult, HistoryEntry, RouteMap, Task
 from surfy.domain.models.research import ResearchResult
-from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ResearcherService, ScoutService
+from surfy.domain.services import (
+    ActorService,
+    EvaluatorService,
+    PlannerService,
+    ReporterService,
+    ResearcherService,
+    ScoutService,
+)
 from surfy.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -27,8 +34,16 @@ def _current_task(state: AgentState) -> Task | None:
 def _is_repeated_plan(next_tasks: list[Task], completed_tasks: list[Task]) -> bool:
     if not next_tasks or not completed_tasks:
         return False
-    completed_descriptions = {task.description.strip() for task in completed_tasks}
-    return all(task.description.strip() in completed_descriptions for task in next_tasks)
+    completed_descriptions = {task.description.strip().lower() for task in completed_tasks}
+    for task in next_tasks:
+        desc = task.description.strip().lower()
+        for completed_desc in completed_descriptions:
+            if desc in completed_desc or completed_desc in desc:
+                return True
+            common_words = set(desc.split()) & set(completed_desc.split())
+            if len(common_words) >= min(3, len(desc.split())):
+                return True
+    return False
 
 
 def _is_simple_navigation_command(command: str) -> bool:
@@ -43,6 +58,7 @@ def compile_graph(
     planner: PlannerService,
     actor: ActorService,
     evaluator: EvaluatorService,
+    reporter: ReporterService | None = None,
     researcher: ResearcherService | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
     scout_max_steps: int = 20,
@@ -139,6 +155,9 @@ def compile_graph(
             }
 
         if state["current_task_idx"] >= len(plan.tasks):
+            if len(state["completed_tasks"]) >= 10:
+                logger.warning("Max completed tasks (10) reached. Finishing.")
+                return {"plan": plan, "done": True, "retry_count": 0, "eval_result": None}
             next_plan = await planner.next_tasks(plan, state["completed_tasks"])
             if not next_plan.tasks:
                 return {"plan": next_plan, "done": True, "retry_count": 0, "eval_result": None}
@@ -193,6 +212,18 @@ def compile_graph(
             eval_result = await evaluator.evaluate(task, page_state)
 
         if eval_result.success:
+            actor_message = ""
+            if state["history"]:
+                last_entry = state["history"][-1]
+                if last_entry.result and last_entry.result.message:
+                    actor_message = last_entry.result.message
+            if actor_message and actor_message != "Task completed":
+                result_text = actor_message
+            elif page_state is not None:
+                result_text = f"[{page_state.title}] {page_state.url}"
+            else:
+                result_text = "완료"
+            task = task.model_copy(update={"result": result_text})
             return {
                 "eval_result": eval_result,
                 "completed_tasks": [task],
@@ -263,9 +294,21 @@ def compile_graph(
             return {"done": True}
         return {}
 
-    def route_after_scout(state: AgentState) -> Literal["planner", "END"]:
+    async def report_node(state: AgentState) -> dict[str, object]:
+        if reporter is None:
+            return {"report_result": None}
+        command = state["command"]
+        completed_tasks = list(state["completed_tasks"])
+        try:
+            report_text = await reporter.report(command, completed_tasks)
+            return {"report_result": report_text}
+        except Exception as e:
+            logger.warning("Report generation failed: %s", e)
+            return {"report_result": None}
+
+    def route_after_scout(state: AgentState) -> Literal["planner", "report"]:
         if state.get("done", False):
-            return "END"
+            return "report"
         return "planner"
 
     def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "END"]:
@@ -313,9 +356,9 @@ def compile_graph(
             return "END"
         return "planner"
 
-    def route_after_completion(state: AgentState) -> Literal["planner", "END"]:
+    def route_after_completion(state: AgentState) -> Literal["planner", "report"]:
         if state["done"]:
-            return "END"
+            return "report"
         return "planner"
 
     graph_builder = StateGraph(AgentState)
@@ -327,6 +370,7 @@ def compile_graph(
     graph_builder.add_node("evaluator", evaluator_node)
     graph_builder.add_node("human_gateway", human_gateway_node)
     graph_builder.add_node("completion_check", completion_check_node)
+    graph_builder.add_node("report", report_node)
 
     graph_builder.set_entry_point("research")
 
@@ -336,7 +380,7 @@ def compile_graph(
         route_after_scout,
         {
             "planner": "planner",
-            "END": END,
+            "report": "report",
         },
     )
 
@@ -383,8 +427,9 @@ def compile_graph(
         route_after_completion,
         {
             "planner": "planner",
-            "END": END,
+            "report": "report",
         },
     )
+    graph_builder.add_edge("report", END)
 
     return graph_builder.compile(checkpointer=checkpointer)
