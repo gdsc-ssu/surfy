@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from surfy.domain.models import ActorOutput, EvalResult, HistoryEntry, PageState, Task
+from surfy.domain.models import ActorOutput, CommandIntent, EvalResult, HistoryEntry, PageState, Task
 from surfy.domain.models.criteria import SuccessCriteria
 from surfy.domain.models.plan import Plan
 
@@ -17,6 +17,7 @@ class LLMPort(ABC):
         task: Task,
         page_state: PageState,
         history: list[HistoryEntry],
+        previous_memory: str = "",
     ) -> ActorOutput:
         """Actor용: 현재 페이지 상태와 히스토리를 기반으로 다음 액션 결정."""
         ...
@@ -34,6 +35,11 @@ class LLMPort(ABC):
         Returns:
             Plan: anchor, tasks, anchor_rationale을 포함한 계획
         """
+        ...
+
+    @abstractmethod
+    async def extract_intent(self, command: str) -> CommandIntent:
+        """Cache용: 명령어에서 구조화된 의도를 추출하여 캐시 키 생성에 사용."""
         ...
 
     @abstractmethod
