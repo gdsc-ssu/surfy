@@ -41,6 +41,7 @@ from surfy.domain.models import (
 )
 from surfy.domain.models.messages import (
     CancelledMessageData,
+    ChatMessageData,
     ConnectedMessageData,
     DomHighlightMessageData,
     ErrorMessageData,
@@ -50,7 +51,14 @@ from surfy.domain.models.messages import (
     StateUpdateMessageData,
     parse_client_message,
 )
-from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ResearcherService, ScoutService
+from surfy.domain.services import (
+    ActorService,
+    EvaluatorService,
+    PlannerService,
+    ReporterService,
+    ResearcherService,
+    ScoutService,
+)
 from surfy.graph import compile_graph
 from surfy.observability import create_langfuse_handler
 from surfy.state import AgentState
@@ -353,12 +361,14 @@ async def _get_or_create_runtime() -> ServerRuntime:
         actor = ActorService(browser=browser, llm=llm)
         scout = ScoutService(scout=agent_adapter)
         evaluator = EvaluatorService(browser=browser, llm=llm)
+        reporter = ReporterService(llm=llm)
 
         compiled_graph = compile_graph(
             scout=scout,
             planner=planner,
             actor=actor,
             evaluator=evaluator,
+            reporter=reporter,
             researcher=researcher,
             checkpointer=MemorySaver(),
             scout_max_steps=settings.scout.max_steps,
@@ -445,6 +455,9 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
                             await asyncio.sleep(0.01)
 
                     await _send_message(NodeEndMessage(data=NodeEndMessageData(node=node_name, updates=plain_updates)))
+
+                    if node_name == "report" and plain_updates.get("report_result"):
+                        await _send_message(ChatMessage(data=ChatMessageData(message=plain_updates["report_result"])))
 
                     if node_name == "actor":
                         await _send_message(DomHighlightMessage(data=DomHighlightMessageData(action_type="task_end")))
