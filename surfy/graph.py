@@ -34,8 +34,16 @@ def _current_task(state: AgentState) -> Task | None:
 def _is_repeated_plan(next_tasks: list[Task], completed_tasks: list[Task]) -> bool:
     if not next_tasks or not completed_tasks:
         return False
-    completed_descriptions = {task.description.strip() for task in completed_tasks}
-    return all(task.description.strip() in completed_descriptions for task in next_tasks)
+    completed_descriptions = {task.description.strip().lower() for task in completed_tasks}
+    for task in next_tasks:
+        desc = task.description.strip().lower()
+        for completed_desc in completed_descriptions:
+            if desc in completed_desc or completed_desc in desc:
+                return True
+            common_words = set(desc.split()) & set(completed_desc.split())
+            if len(common_words) >= min(3, len(desc.split())):
+                return True
+    return False
 
 
 def _is_simple_navigation_command(command: str) -> bool:
@@ -147,6 +155,9 @@ def compile_graph(
             }
 
         if state["current_task_idx"] >= len(plan.tasks):
+            if len(state["completed_tasks"]) >= 10:
+                logger.warning("Max completed tasks (10) reached. Finishing.")
+                return {"plan": plan, "done": True, "retry_count": 0, "eval_result": None}
             next_plan = await planner.next_tasks(plan, state["completed_tasks"])
             if not next_plan.tasks:
                 return {"plan": next_plan, "done": True, "retry_count": 0, "eval_result": None}
