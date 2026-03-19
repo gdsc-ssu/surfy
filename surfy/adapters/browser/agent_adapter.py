@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 
 from browser_use import Agent, BrowserSession
 from browser_use.agent.service import AgentHistoryList
@@ -10,6 +11,21 @@ from surfy.domain.models.route import RouteMap, RouteStep
 from surfy.domain.ports.scout import ScoutPort
 
 logger = logging.getLogger(__name__)
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+
+
+def _load_scout_prompt() -> str:
+    """Scout용 .prompty 파일에서 system 본문만 추출한다."""
+    prompty_path = PROMPTS_DIR / "scout.prompty"
+    content = prompty_path.read_text(encoding="utf-8")
+
+    parts = content.split("---")
+    if len(parts) >= 3:
+        template = "---".join(parts[2:]).strip()
+        if template.startswith("system:"):
+            template = template[7:].strip()
+        return template
+    return content
 
 
 class BrowserUseAgentAdapter(ScoutPort):
@@ -18,6 +34,7 @@ class BrowserUseAgentAdapter(ScoutPort):
     def __init__(self, session: BrowserSession, llm: BaseChatModel) -> None:
         self._session = session
         self._llm = llm
+        self._scout_prompt = _load_scout_prompt()
         self.step_progress_queue: asyncio.Queue[StepProgressMessageData] = asyncio.Queue()
 
     async def explore(self, task: str, max_steps: int = 20) -> RouteMap:
@@ -28,6 +45,7 @@ class BrowserUseAgentAdapter(ScoutPort):
             task=task,
             llm=self._llm,
             browser_session=self._session,
+            extend_system_message=self._scout_prompt,
             enable_planning=False,
             use_thinking=False,
             use_vision=False,
