@@ -63,6 +63,9 @@ class MockLLM(LLMPort):
         self.evaluate_called = True
         return self._eval_result
 
+    async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
+        return f"Report for {command}"
+
 
 @pytest.mark.asyncio
 async def test_url_mismatch_fails_immediately():
