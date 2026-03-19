@@ -50,7 +50,7 @@ class MockLLM(LLMPort):
         self._eval_result = eval_result or EvalResult(success=True, reason="LLM says OK")
         self.evaluate_called = False
 
-    async def decide_action(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
+    async def decide_action(self, task: Task, page_state: PageState, history: list[HistoryEntry], **kwargs) -> ActorOutput:
         return ActorOutput(thinking="test", action_type=ActionType.DONE)
 
     async def scout(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
@@ -62,6 +62,10 @@ class MockLLM(LLMPort):
     async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:
         self.evaluate_called = True
         return self._eval_result
+
+    async def extract_intent(self, command: str):
+        from surfy.domain.models.cache import CommandIntent
+        return CommandIntent(service="unknown", action="navigate")
 
 
 @pytest.mark.asyncio
