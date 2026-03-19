@@ -16,7 +16,7 @@ from surfy.domain.ports import LLMPort
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
 RECENT_HISTORY_COUNT = 10
-MAX_DOM_TEXT_LENGTH = 5000  # 토큰 제한을 위한 DOM 텍스트 최대 길이
+MAX_DOM_TEXT_LENGTH = 20000
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 AUTH_INSTRUCTION = (
     "인증/로그인/본인인증 페이지를 만나면 STUCK을 선택하고 "
