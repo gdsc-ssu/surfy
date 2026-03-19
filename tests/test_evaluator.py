@@ -50,7 +50,9 @@ class MockLLM(LLMPort):
         self._eval_result = eval_result or EvalResult(success=True, reason="LLM says OK")
         self.evaluate_called = False
 
-    async def decide_action(self, task: Task, page_state: PageState, history: list[HistoryEntry], **kwargs) -> ActorOutput:
+    async def decide_action(
+        self, task: Task, page_state: PageState, history: list[HistoryEntry], **kwargs
+    ) -> ActorOutput:
         return ActorOutput(thinking="test", action_type=ActionType.DONE)
 
     async def scout(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
