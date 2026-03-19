@@ -288,9 +288,9 @@ def compile_graph(
             logger.warning("Report generation failed: %s", e)
             return {"report_result": None}
 
-    def route_after_scout(state: AgentState) -> Literal["planner", "END"]:
+    def route_after_scout(state: AgentState) -> Literal["planner", "report"]:
         if state.get("done", False):
-            return "END"
+            return "report"
         return "planner"
 
     def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "END"]:
@@ -362,7 +362,7 @@ def compile_graph(
         route_after_scout,
         {
             "planner": "planner",
-            "END": END,
+            "report": "report",
         },
     )
 
