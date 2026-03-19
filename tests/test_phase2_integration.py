@@ -72,6 +72,7 @@ class MockLLM(LLMPort):
         task: Task,
         page_state: PageState,
         history: list[HistoryEntry],
+        **kwargs,
     ) -> ActorOutput:
         if self._index >= len(self._actions):
             return ActorOutput(thinking="Done", action_type=ActionType.DONE)
@@ -99,6 +100,10 @@ class MockLLM(LLMPort):
     async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:
         """Mock evaluate — Phase 2 테스트에서는 사용하지 않음."""
         return EvalResult(success=True, reason="Mock evaluation")
+
+    async def extract_intent(self, command: str):
+        from surfy.domain.models.cache import CommandIntent
+        return CommandIntent(service="unknown", action="navigate")
 
 
 @pytest.mark.asyncio
