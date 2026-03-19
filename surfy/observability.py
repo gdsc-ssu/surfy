@@ -1,5 +1,7 @@
 import logging
 import os
+import urllib.error
+import urllib.request
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +16,13 @@ def create_langfuse_handler():
 
     try:
         from langfuse.langchain import CallbackHandler
+
+        base_url = os.environ.get("LANGFUSE_BASE_URL", "http://localhost:3000")
+        try:
+            urllib.request.urlopen(f"{base_url}/api/public/health", timeout=2)
+        except (urllib.error.URLError, OSError, Exception):
+            logger.warning("Langfuse unreachable at %s — tracing disabled", base_url)
+            return None
 
         handler = CallbackHandler()
         logger.info("Langfuse tracing enabled (host=%s)", os.environ.get("LANGFUSE_BASE_URL", "default"))
