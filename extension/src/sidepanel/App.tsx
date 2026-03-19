@@ -434,13 +434,17 @@ export default function App() {
           dispatch({ type: "INTERRUPT", data: message.data });
           if (autoApproveRef.current && message.data?.interrupt_type !== "human_gateway") {
             setTimeout(() => {
+              // completion_check: approved=false means "Complete", approved=true means "Request More"
+              const isCompletionCheck = message.data?.interrupt_type === "completion_check";
+              const approvedValue = isCompletionCheck ? false : true;
+
               chrome.runtime.sendMessage({
                 source: "sidepanel",
                 payload: {
                   type: "resume",
                   data: {
                     interrupt_type: message.data?.interrupt_type,
-                    value: { approved: true, modification: null },
+                    value: { approved: approvedValue, modification: null },
                   },
                 },
               });

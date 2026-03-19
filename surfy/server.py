@@ -165,6 +165,7 @@ async def _cleanup_runtime() -> None:
 
     _SESSION.current_state = None
     _SESSION.chat_queue.clear()
+    _SESSION.pending_interrupt = None
 
 
 async def _cleanup_runtime_from_watchdog() -> None:
@@ -183,6 +184,7 @@ async def _cleanup_runtime_from_watchdog() -> None:
 
     _SESSION.current_state = None
     _SESSION.chat_queue.clear()
+    _SESSION.pending_interrupt = None
 
 
 async def _browser_watchdog() -> None:
@@ -506,6 +508,7 @@ async def _clear_session() -> None:
     await _cancel_graph_task()
     _SESSION.current_state = None
     _SESSION.chat_queue.clear()
+    _SESSION.pending_interrupt = None
     _SESSION.thread_id = _new_thread_id()
     logger.info("Session cleared — new thread_id: %s", _SESSION.thread_id)
     await _send_message(ConnectedMessage(data=ConnectedMessageData(state=None, running=False)))
@@ -524,6 +527,7 @@ async def _start_run(command: str) -> None:
     _SESSION.thread_id = _new_thread_id()
     _SESSION.current_state = _to_plain(_initial_state(command))
     _SESSION.chat_queue.clear()
+    _SESSION.pending_interrupt = None
     _ensure_asyncio_create_task_compat()
     _SESSION.graph_task = asyncio.create_task(_handle_graph_stream(_initial_state(command)))
 
@@ -541,6 +545,7 @@ async def _start_resume(value: dict[str, Any]) -> None:
 async def _cancel_run() -> None:
     task = _SESSION.graph_task
     if task is None or task.done():
+        _SESSION.pending_interrupt = None
         await _send_message(CancelledMessage(data=CancelledMessageData(reason="No running task")))
         _SESSION.graph_task = None
         return
@@ -551,6 +556,7 @@ async def _cancel_run() -> None:
     except asyncio.CancelledError:
         pass
 
+    _SESSION.pending_interrupt = None
     await _send_message(CancelledMessage(data=CancelledMessageData(reason="Cancelled by client")))
 
 
