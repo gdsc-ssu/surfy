@@ -1,0 +1,40 @@
+.agents {
+  background: var(--bg-white);
+}
+
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 20px;
+}
+
+.agent-card {
+  background: var(--primary-lighter);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px 20px;
+  text-align: center;
+  transition: var(--transition);
+  cursor: default;
+}
+
+.agent-card:hover {
+}
+
+.agent-icon {
+  font-size: 2.5rem;
+  margin-bottom: 16px;
+}
+
+.agent-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--primary);
+}
+
+.agent-card p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}

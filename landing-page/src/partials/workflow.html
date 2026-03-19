@@ -1,0 +1,33 @@
+<section class="section workflow" id="workflow">
+  <div class="container">
+    <div class="section-header fade-up">
+      <span class="section-label">Sequence Diagram</span>
+      <h2 class="section-title">동작 시나리오</h2>
+      <p class="section-desc">사용자의 요청부터 완료까지의 전체 흐름을 시퀀스 다이어그램으로 확인하세요</p>
+    </div>
+
+    <div class="sequence-tabs fade-up">
+      <button class="seq-tab active" data-tab="success">성공 시나리오</button>
+      <button class="seq-tab" data-tab="failure">실패 &amp; 복구 시나리오</button>
+    </div>
+
+    <div class="sequence-panels fade-up">
+      <div class="seq-panel active" id="panel-success">
+        <div class="seq-description">
+          <p>사용자가 자연어로 명령하면, Research &rarr; Scout &rarr; Planner &rarr; 사용자 승인 &rarr; Actor &rarr; Evaluator 순서로 진행되어 목표를 달성합니다.</p>
+        </div>
+        <div class="seq-image-wrap">
+          <img src="assets/images/sdg-success-scenario.png" alt="성공 시나리오 시퀀스 다이어그램">
+        </div>
+      </div>
+      <div class="seq-panel" id="panel-failure">
+        <div class="seq-description">
+          <p>실패 시 최대 3회 자동 재시도하며, 재시도 소진 시 Human Gateway를 통해 사용자에게 도움을 요청한 뒤 피드백을 반영하여 재실행합니다.</p>
+        </div>
+        <div class="seq-image-wrap">
+          <img src="assets/images/sdg-failure-scenario.png" alt="실패 시나리오 시퀀스 다이어그램">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
