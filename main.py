@@ -11,11 +11,13 @@ from langgraph.types import Command
 
 from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
+from surfy.adapters.cache import JsonFileCacheAdapter
 from surfy.adapters.llm import LangChainLLMAdapter
 from surfy.adapters.research import DdgsSearchAdapter
 from surfy.config import Settings
 from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ResearcherService, ScoutService
 from surfy.graph import compile_graph
+from surfy.observability import create_langfuse_handler
 from surfy.state import AgentState
 
 
@@ -73,7 +75,7 @@ async def run(command: str) -> AgentState:
     evaluator = EvaluatorService(browser=browser, llm=llm)
 
     checkpointer = MemorySaver()
-    graph = compile_graph(
+    compiled_graph = compile_graph(
         scout=scout,
         planner=planner,
         actor=actor,
@@ -81,7 +83,14 @@ async def run(command: str) -> AgentState:
         researcher=researcher,
         checkpointer=checkpointer,
         handoff_on_auth=settings.handoff_on_auth,
+        cache=JsonFileCacheAdapter(),
     )
+
+    langfuse_handler = create_langfuse_handler()
+    if langfuse_handler is not None:
+        graph = compiled_graph.with_config({"callbacks": [langfuse_handler]})
+    else:
+        graph = compiled_graph
 
     initial_state: AgentState = {
         "command": command,
@@ -98,8 +107,10 @@ async def run(command: str) -> AgentState:
         "plan_approved": False,
         "user_feedback": None,
         "auth_required": False,
+        "post_auth": False,
         "done": False,
         "error": None,
+        "cache_hit": False,
     }
 
     logger = logging.getLogger("surfy.run")
@@ -111,6 +122,8 @@ async def run(command: str) -> AgentState:
         while True:
             async for event in graph.astream(input_payload, config=config):  # type: ignore
                 for node_name, updates in event.items():
+                    if not isinstance(updates, dict):
+                        continue
                     _log_node_result(logger, node_name, updates)
                     final_state = {**final_state, **updates}
 
@@ -179,6 +192,9 @@ async def run(command: str) -> AgentState:
         return cast(AgentState, final_state)
     finally:
         await browser.close()
+        if langfuse_handler is not None:
+            from langfuse import get_client
+            get_client().flush()
 
 
 def _log_node_result(logger: logging.Logger, node_name: str, updates: dict) -> None:

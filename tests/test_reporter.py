@@ -5,7 +5,17 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
-from surfy.domain.models import ActionType, ActorOutput, EvalResult, HistoryEntry, PageState, RouteMap, StepResult, Task
+from surfy.domain.models import (
+    ActionType,
+    ActorOutput,
+    CommandIntent,
+    EvalResult,
+    HistoryEntry,
+    PageState,
+    RouteMap,
+    StepResult,
+    Task,
+)
 from surfy.domain.models.criteria import SuccessCriteria
 from surfy.domain.models.plan import Plan
 from surfy.domain.ports import LLMPort
@@ -27,6 +37,9 @@ class MockLLM(LLMPort):
 
     async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:
         return EvalResult(success=True, reason="OK")
+
+    async def extract_intent(self, command: str) -> CommandIntent:
+        return CommandIntent(service="unknown")
 
     async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
         self.generate_report_calls.append((command, task_results))

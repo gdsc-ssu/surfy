@@ -16,6 +16,7 @@ from langchain_anthropic import ChatAnthropic
 
 from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
+from surfy.adapters.cache import JsonFileCacheAdapter
 from surfy.adapters.llm import LangChainLLMAdapter
 from surfy.adapters.research import DdgsSearchAdapter
 from surfy.domain.services import (
@@ -62,6 +63,7 @@ def _make_graph():
         evaluator=evaluator,
         reporter=reporter,
         researcher=researcher,
+        cache=JsonFileCacheAdapter(),
     )
 
 

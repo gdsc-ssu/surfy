@@ -111,12 +111,12 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onRes
       case "human_gateway":
         return (
           <>
-            <h3 className="text-lg font-bold text-red-600 mb-2">Task Failed</h3>
-            <div className="bg-red-50 p-3 rounded border border-red-200 mb-4">
-              <p className="font-semibold text-sm text-red-900 mb-1">Failed Task:</p>
-              <p className="text-sm text-red-800 mb-3">{interrupt.payload.failed_task}</p>
-              <p className="font-semibold text-sm text-red-900 mb-1">Reason:</p>
-              <p className="text-sm text-red-800">{interrupt.payload.reason}</p>
+            <h3 className="text-lg font-bold text-yellow-600 mb-2">사용자 확인 필요</h3>
+            <div className="bg-yellow-50 p-3 rounded border border-yellow-200 mb-4">
+              <p className="font-semibold text-sm text-yellow-900 mb-1">진행 중인 작업:</p>
+              <p className="text-sm text-yellow-800 mb-3">{interrupt.payload.failed_task}</p>
+              <p className="font-semibold text-sm text-yellow-900 mb-1">이유:</p>
+              <p className="text-sm text-yellow-800">{interrupt.payload.reason}</p>
             </div>
             <div className="flex flex-col gap-2">
               <button
@@ -124,8 +124,8 @@ export const InterruptPanel: React.FC<InterruptPanelProps> = ({ interrupt, onRes
                 className="w-full bg-blue-600 text-white py-2.5 rounded-md font-medium hover:bg-blue-700 transition-colors"
                 data-testid="approve-button"
               >
-                <div className="text-sm font-semibold">다시 시도</div>
-                <div className="text-xs opacity-80">Planner가 새 전략으로 재시도합니다</div>
+                <div className="text-sm font-semibold">완료 — 계속 진행</div>
+                <div className="text-xs opacity-80">위 작업을 직접 처리한 후 클릭하세요</div>
               </button>
               <button
                 onClick={() => handleResume({ approved: false })}

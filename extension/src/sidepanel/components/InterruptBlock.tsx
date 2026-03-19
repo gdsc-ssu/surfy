@@ -98,10 +98,13 @@ export const InterruptBlock: React.FC<InterruptBlockProps> = ({ interruptData, o
 
   if (interruptData.interrupt_type === "human_gateway") {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-md p-3 flex flex-col gap-3" data-testid="interrupt-block">
-        <h3 className="text-sm font-bold text-red-700">Task Failed</h3>
-        <div className="text-sm text-red-800 whitespace-pre-wrap">
-          {interruptData.payload.reason || interruptData.payload.message || "Agent needs guidance to continue."}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 flex flex-col gap-3" data-testid="interrupt-block">
+        <h3 className="text-sm font-bold text-yellow-700">사용자 확인 필요</h3>
+        <div className="bg-white p-2 rounded border border-yellow-200 text-sm text-yellow-900">
+          <p className="font-semibold mb-1">진행 중인 작업:</p>
+          <p className="mb-2">{interruptData.payload.failed_task}</p>
+          <p className="font-semibold mb-1">이유:</p>
+          <p>{interruptData.payload.reason || interruptData.payload.message || "Agent needs guidance to continue."}</p>
         </div>
         <button
           type="button"
@@ -109,7 +112,16 @@ export const InterruptBlock: React.FC<InterruptBlockProps> = ({ interruptData, o
           className="w-full bg-blue-600 text-white py-2.5 rounded-md font-medium"
           data-testid="retry-button"
         >
-          Retry
+          <div className="text-sm font-semibold">완료 — 계속 진행</div>
+          <div className="text-xs opacity-80">위 작업을 직접 처리한 후 클릭하세요</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => onAction({ approved: false, modification: null })}
+          className="w-full bg-gray-600 text-white py-2 rounded-md font-medium text-sm"
+          data-testid="stop-button"
+        >
+          중단
         </button>
       </div>
     );
