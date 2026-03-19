@@ -190,8 +190,9 @@ docker compose -f docker-compose.langfuse.yml up -d
 1. http://localhost:3000 접속
 2. **Sign Up**을 클릭하여 계정 생성 (이메일, 비밀번호 자유롭게 설정)
 3. Organization 이름 입력 (예: `surfy`)
-4. 로그인 후 좌측 하단 **Settings** -> **API Keys** -> **Create New API Key**
-5. 생성된 **Public Key**와 **Secret Key**를 복사 (Secret Key는 이 시점에만 표시됨)
+4. Project 생성 (처음 사용하는 경우 Project가 없으면 새로운 Project를 먼저 생성해야 합니다.)
+5. 로그인 후 좌측 하단 **Settings** -> **API Keys** -> **Create New API Key**
+6. 생성된 **Public Key**와 **Secret Key**를 복사 (Secret Key는 이 시점에만 표시됨)
 
 **3단계: .env에 키 등록**
 
