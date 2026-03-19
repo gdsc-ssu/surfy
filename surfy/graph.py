@@ -378,8 +378,9 @@ def compile_graph(
         if not completed_tasks:
             route_map = state.get("route_map")
             scout_summary = (route_map.scout_summary if route_map else "") or ""
-            research_result = state.get("research_result") or ""
-            context = scout_summary or research_result
+            raw_research = state.get("research_result")
+            research_summary = raw_research.summary if raw_research and hasattr(raw_research, "summary") else ""
+            context = scout_summary or research_summary
             if context:
                 completed_tasks = [Task(description="수집된 정보", result=context)]
 
