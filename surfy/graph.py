@@ -386,9 +386,9 @@ def compile_graph(
             return "report"
         return "planner"
 
-    def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "END"]:
+    def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "cache_store", "END"]:
         if state["done"]:
-            return "END"
+            return "cache_store"
         task = _current_task(state)
         if task is None:
             return "END"
@@ -472,6 +472,7 @@ def compile_graph(
         {
             "plan_approval": "plan_approval",
             "actor": "actor",
+            "cache_store": "cache_store",
             "END": END,
         },
     )

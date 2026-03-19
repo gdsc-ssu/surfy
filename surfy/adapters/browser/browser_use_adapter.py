@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import platform
 from pathlib import Path
@@ -88,7 +87,6 @@ class BrowserUseAdapter(BrowserPort):
                     event = self._session.event_bus.dispatch(NavigateToUrlEvent(url=action.value))
                     await event
                     await event.event_result(raise_if_any=True, raise_if_none=False)
-                    await asyncio.sleep(2)  # JS-heavy 사이트 렌더링 대기
                 case ActionType.CLICK:
                     assert action.target_id is not None, "CLICK requires target_id"
                     node = await self._session.get_element_by_index(action.target_id)
