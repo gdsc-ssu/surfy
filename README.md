@@ -19,20 +19,32 @@ cd surfy
 
 # 2. 의존성 설치
 uv sync
-
-# 3. 환경 변수 설정
-cp .env.example .env
 ```
 
-`.env` 파일을 열어서 API 키를 입력합니다:
+### 3. 환경 변수 설정
+
+Surfy는 시크릿 관리를 위해 **Doppler** 사용을 권장합니다.
+
+#### 옵션 A: Doppler 사용 (권장)
 
 ```bash
-# 필수
-ANTHROPIC_API_KEY=sk-ant-xxxx        # https://console.anthropic.com 에서 발급
+# 1. Doppler CLI 설치 (macOS)
+brew install dopplerhq/cli/doppler
 
-# 권장 (Scout 고속화 — Gemini 3 Flash 사용)
-GOOGLE_API_KEY=AIza...               # https://aistudio.google.com/apikey 에서 발급
+# 2. 로그인 및 프로젝트 설정
+doppler login
+doppler setup  # 자동으로 surfy 프로젝트의 dev 설정과 매핑됩니다
 ```
+설정 후에는 `make serve` 등의 명령어가 자동으로 Doppler에서 시크릿을 가져와 주입합니다.
+
+#### 옵션 B: .env 파일 사용 (Fallback)
+Doppler 없이 로컬 환경 변수를 사용하려면 `.env` 파일을 생성합니다.
+```bash
+cp .env.example .env
+```
+`.env` 파일을 열어 아래 키들을 입력합니다:
+- `ANTHROPIC_API_KEY`: [Anthropic Console](https://console.anthropic.com/)에서 발급
+- `GOOGLE_API_KEY`: [Google AI Studio](https://aistudio.google.com/apikey)에서 발급 (권장)
 
 > `GOOGLE_API_KEY`가 없으면 Scout도 Claude를 사용합니다 (동작하지만 느림).
 
