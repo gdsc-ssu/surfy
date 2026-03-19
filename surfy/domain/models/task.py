@@ -17,3 +17,6 @@ class Task(BaseModel):
 
     target_url: str | None = None
     """Scout이 발견한 목표 URL — Actor가 GO_TO_URL로 직접 이동할 수 있다."""
+
+    result: str | None = None
+    """태스크 실행 결과 — 추출된 데이터나 최종 상태 요약."""

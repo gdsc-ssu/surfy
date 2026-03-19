@@ -64,6 +64,7 @@ class LangChainLLMAdapter(LLMPort):
         self._actor_template = _load_prompty("actor")
         self._planner_template = _load_prompty("planner")
         self._evaluator_template = _load_prompty("evaluator")
+        self._report_template = _load_prompty("report")
 
     @property
     def model(self) -> BaseChatModel:
@@ -160,6 +161,29 @@ class LangChainLLMAdapter(LLMPort):
         if isinstance(result, dict):
             return EvalResult(**result)
         return result  # type: ignore[return-value]
+
+    async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
+        """Reporter용: 완료된 태스크 결과를 종합하여 최종 보고 생성."""
+        template_str = self._report_template.replace("{{", "${").replace("}}", "}")
+        template = Template(template_str)
+
+        formatted_results = "\n".join(
+            f"- 태스크: {r['description']}\n  결과: {r['result']}" for r in task_results
+        )
+
+        prompt = template.safe_substitute(
+            command=command,
+            task_results=formatted_results,
+        )
+
+        messages = [HumanMessage(content=prompt)]
+
+        try:
+            result = await self._model.ainvoke(messages)
+            return str(result.content)
+        except Exception as e:
+            logger.warning("Report generation failed: %s", e)
+            return f"완료된 작업:\n{formatted_results}"
 
     def _format_history(self, history: list[HistoryEntry]) -> str:
         """액션 히스토리를 문자열로 포맷."""
