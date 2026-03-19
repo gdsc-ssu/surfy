@@ -1,6 +1,9 @@
 """Scout adapter의 history 변환 로직 단위 테스트."""
 
-from surfy.adapters.browser.agent_adapter import _history_to_route_map, _is_login_wall
+import pytest
+
+from surfy.adapters.browser import agent_adapter
+from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter, _history_to_route_map, _is_login_wall
 
 
 class MockAgentHistoryList:
@@ -109,3 +112,35 @@ def test_history_to_route_map_keeps_scout_completed_on_non_login_success() -> No
 
     assert route_map.scout_completed is True
     assert "로그인 필요" not in route_map.scout_summary
+
+
+@pytest.mark.asyncio
+async def test_explore_passes_scout_prompt_via_extend_system_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeAgent:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+        async def run(self, max_steps: int):
+            captured["max_steps"] = max_steps
+            return MockAgentHistoryList(
+                urls=["https://example.com"],
+                action_names=["go_to_url"],
+                final_result="탐색 완료",
+                is_successful=True,
+            )
+
+    monkeypatch.setattr(agent_adapter, "Agent", FakeAgent)
+
+    adapter = BrowserUseAgentAdapter(session=object(), llm=object())  # type: ignore[arg-type]
+
+    route_map = await adapter.explore("정찰: 테스트", max_steps=3)
+
+    assert captured["task"] == "정찰: 테스트"
+    assert captured["browser_session"] is adapter._session
+    assert captured["llm"] is adapter._llm
+    assert captured["extend_system_message"] == adapter._scout_prompt
+    assert "정찰은 경로 수집이다" in str(captured["extend_system_message"])
+    assert captured["max_steps"] == 3
+    assert route_map.scout_completed is True
