@@ -103,12 +103,8 @@ def _is_login_wall(urls: list[str | None]) -> bool:
 def _history_to_route_map(history: AgentHistoryList) -> RouteMap:
     urls = history.urls()
     actions = history.action_names()
-    scout_completed = history.is_successful() is True
-
     login_wall = _is_login_wall(urls)
-    if scout_completed and login_wall:
-        logger.info("Scout reported success but landed on login page — overriding scout_completed to False")
-        scout_completed = False
+    scout_completed = False
 
     steps: list[RouteStep] = []
     for i, url in enumerate(urls):
