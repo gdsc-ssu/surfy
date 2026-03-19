@@ -134,6 +134,9 @@ def compile_graph(
             route_map: RouteMap = await scout.scout(
                 state["command"], max_steps=scout_max_steps, research_result=state.get("research_result")
             )
+            if route_map and route_map.scout_completed:
+                logger.info("Scout already extracted data. Skipping planner.")
+                return {"route_map": route_map, "done": True}
             return {"route_map": route_map}
         except Exception as e:
             logger.warning("Scout failed: %s. Falling back to blind planning.", e)

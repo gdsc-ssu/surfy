@@ -98,8 +98,8 @@ async def test_research_node_handles_researcher_failure():
 
 
 @pytest.mark.asyncio
-async def test_scout_completed_routes_to_planner():
-    """scout_completed=True여도 항상 planner로 라우팅된다."""
+async def test_scout_completed_skips_planner():
+    """scout_completed=True이면 planner를 건너뛰고 report로 간다."""
     researcher = MagicMock()
     researcher.research = AsyncMock(return_value=None)
 
@@ -122,7 +122,62 @@ async def test_scout_completed_routes_to_planner():
     result = await graph.ainvoke(_initial_state("네이버 열어"))
 
     assert result["route_map"].scout_completed is True
-    planner.create_plan.assert_awaited_once()
+    assert result["done"] is True
+    planner.create_plan.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_scout_completed_skips_planner_and_goes_to_report():
+    researcher = MagicMock()
+    researcher.research = AsyncMock(return_value=ResearchResult(summary="요약", sources=[], raw_results=[]))
+
+    scout = MagicMock()
+    route_map = RouteMap(
+        steps=[
+            RouteStep(
+                url="https://example.com",
+                title="제목",
+                action_taken="관찰",
+                observed_elements=[],
+                notes="데이터 발견",
+            )
+        ],
+        final_url="https://example.com",
+        scout_summary="데이터",
+        scout_completed=True,
+    )
+    scout.scout = AsyncMock(return_value=route_map)
+
+    planner = MagicMock()
+    planner.create_plan = AsyncMock()
+
+    actor = MagicMock()
+    evaluator = MagicMock()
+
+    reporter = MagicMock()
+    reporter.report = AsyncMock(return_value="최종 리포트")
+
+    graph = compile_graph(
+        scout=scout,
+        planner=planner,
+        actor=actor,
+        evaluator=evaluator,
+        researcher=researcher,
+        reporter=reporter,
+        checkpointer=MemorySaver(),
+        handoff_on_auth=False,
+    )
+
+    config = cast(RunnableConfig, {"configurable": {"thread_id": "scout_fast_path"}})
+    result = await graph.ainvoke(_initial_state("데이터 찾아줘"), config)
+
+    state = await graph.aget_state(config)
+    assert state.next == ()
+    assert result["done"] is True
+    assert result["report_result"] == "최종 리포트"
+
+    planner.create_plan.assert_not_awaited()
+    reporter.report.assert_awaited_once()
 
 
 @pytest.mark.asyncio

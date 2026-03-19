@@ -104,7 +104,7 @@ def _history_to_route_map(history: AgentHistoryList) -> RouteMap:
     urls = history.urls()
     actions = history.action_names()
     login_wall = _is_login_wall(urls)
-    scout_completed = False
+    scout_completed = bool(history.final_result()) and not login_wall
 
     steps: list[RouteStep] = []
     for i, url in enumerate(urls):

@@ -32,7 +32,7 @@ class MockAgentHistoryList:
         return self._is_successful
 
 
-def test_history_to_route_map_scout_completed_always_false() -> None:
+def test_history_to_route_map_sets_scout_completed_true_on_success() -> None:
     history = MockAgentHistoryList(
         urls=["https://example.com", "https://example.com/done"],
         action_names=["go_to_url", "click_element"],
@@ -42,7 +42,7 @@ def test_history_to_route_map_scout_completed_always_false() -> None:
 
     route_map = _history_to_route_map(history)  # type: ignore[arg-type]
 
-    assert route_map.scout_completed is False
+    assert route_map.scout_completed is True
 
 
 def test_history_to_route_map_sets_scout_completed_false_when_not_done() -> None:
@@ -58,7 +58,7 @@ def test_history_to_route_map_sets_scout_completed_false_when_not_done() -> None
     assert route_map.scout_completed is False
 
 
-def test_history_to_route_map_sets_scout_completed_false_when_failed() -> None:
+def test_history_to_route_map_sets_scout_completed_true_when_final_result_exists() -> None:
     history = MockAgentHistoryList(
         urls=["https://example.com", "https://example.com/fail"],
         action_names=["go_to_url", "click_element"],
@@ -68,7 +68,7 @@ def test_history_to_route_map_sets_scout_completed_false_when_failed() -> None:
 
     route_map = _history_to_route_map(history)  # type: ignore[arg-type]
 
-    assert route_map.scout_completed is False
+    assert route_map.scout_completed is True
 
 
 def test_login_wall_detected_on_login_url() -> None:
@@ -100,7 +100,7 @@ def test_history_to_route_map_overrides_scout_completed_on_login_wall() -> None:
     assert "로그인 필요" in route_map.scout_summary
 
 
-def test_history_to_route_map_non_login_success_still_false() -> None:
+def test_history_to_route_map_non_login_success_is_true() -> None:
     history = MockAgentHistoryList(
         urls=["https://example.com", "https://example.com/dashboard"],
         action_names=["go_to_url", "click_element"],
@@ -110,7 +110,7 @@ def test_history_to_route_map_non_login_success_still_false() -> None:
 
     route_map = _history_to_route_map(history)  # type: ignore[arg-type]
 
-    assert route_map.scout_completed is False
+    assert route_map.scout_completed is True
 
 
 @pytest.mark.asyncio
@@ -142,4 +142,4 @@ async def test_explore_passes_scout_prompt_via_extend_system_message(monkeypatch
     assert captured["extend_system_message"] == adapter._scout_prompt
     assert "정찰은 경로 수집이다" in str(captured["extend_system_message"])
     assert captured["max_steps"] == 3
-    assert route_map.scout_completed is False
+    assert route_map.scout_completed is True
