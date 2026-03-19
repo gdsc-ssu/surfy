@@ -28,7 +28,9 @@ class MockLLM(LLMPort):
     def __init__(self):
         self.plan_calls: list[tuple[str, str, str, str]] = []
 
-    async def decide_action(self, task: Task, page_state: PageState, history: list[HistoryEntry], **kwargs) -> ActorOutput:
+    async def decide_action(
+        self, task: Task, page_state: PageState, history: list[HistoryEntry], **kwargs
+    ) -> ActorOutput:
         return ActorOutput(thinking="test", action_type=ActionType.DONE)
 
     async def scout(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
