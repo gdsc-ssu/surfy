@@ -50,6 +50,9 @@ class MockLLM(LLMPort):
     async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:
         return EvalResult(success=True, reason="OK")
 
+    async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
+        return f"Report for {command}"
+
 
 @pytest.mark.asyncio
 async def test_create_plan_sets_anchor():

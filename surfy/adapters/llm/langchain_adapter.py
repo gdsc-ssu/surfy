@@ -16,7 +16,7 @@ from surfy.domain.ports import LLMPort
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
 RECENT_HISTORY_COUNT = 10
-MAX_DOM_TEXT_LENGTH = 5000  # 토큰 제한을 위한 DOM 텍스트 최대 길이
+MAX_DOM_TEXT_LENGTH = 20000
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 AUTH_INSTRUCTION = (
     "인증/로그인/본인인증 페이지를 만나면 STUCK을 선택하고 "
@@ -64,6 +64,7 @@ class LangChainLLMAdapter(LLMPort):
         self._actor_template = _load_prompty("actor")
         self._planner_template = _load_prompty("planner")
         self._evaluator_template = _load_prompty("evaluator")
+        self._report_template = _load_prompty("report")
 
     @property
     def model(self) -> BaseChatModel:
@@ -160,6 +161,33 @@ class LangChainLLMAdapter(LLMPort):
         if isinstance(result, dict):
             return EvalResult(**result)
         return result  # type: ignore[return-value]
+
+    async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
+        """Reporter용: 완료된 태스크 결과를 종합하여 최종 보고 생성."""
+        template_str = self._report_template.replace("{{", "${").replace("}}", "}")
+        template = Template(template_str)
+
+        formatted_results = "\n".join(
+            f"- 태스크: {r['description']}\n  결과: {r['result']}" for r in task_results
+        )
+
+        prompt = template.safe_substitute(
+            command=command,
+            task_results=formatted_results,
+        )
+
+        messages = [HumanMessage(content=prompt)]
+
+        try:
+            result = await self._model.ainvoke(messages)
+            content = result.content
+            # Gemini returns list[dict] with 'text' key; Anthropic returns str
+            if isinstance(content, list):
+                return "".join(block.get("text", "") for block in content if isinstance(block, dict))
+            return str(content)
+        except Exception as e:
+            logger.warning("Report generation failed: %s", e)
+            return f"완료된 작업:\n{formatted_results}"
 
     def _format_history(self, history: list[HistoryEntry]) -> str:
         """액션 히스토리를 문자열로 포맷."""

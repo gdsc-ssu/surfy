@@ -1,11 +1,16 @@
 import React, { useEffect, useRef } from "react";
 import { ChatMessage } from "../types";
+import { ActivityBlock } from "./ActivityBlock";
+import { InterruptBlock } from "./InterruptBlock";
+import { PlanBlock } from "./PlanBlock";
+import { ReportBlock } from "./ReportBlock";
 
 interface MessageListProps {
   messages: ChatMessage[];
+  onInterruptAction?: (value: any) => void;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
+export const MessageList: React.FC<MessageListProps> = ({ messages, onInterruptAction }) => {
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -23,6 +28,28 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         </div>
       ) : (
         messages.map((msg, idx) => {
+          if (msg.type === "activity" && msg.activityData) {
+            return <ActivityBlock key={idx} activityData={msg.activityData} />;
+          }
+
+          if (msg.type === "plan" && msg.planData) {
+            return <PlanBlock key={idx} planData={msg.planData} />;
+          }
+
+          if (msg.type === "interrupt" && msg.interruptData) {
+            return (
+              <InterruptBlock
+                key={idx}
+                interruptData={msg.interruptData}
+                onAction={(value) => onInterruptAction?.(value)}
+              />
+            );
+          }
+
+          if (msg.type === "report" && msg.reportData) {
+            return <ReportBlock key={idx} reportData={msg.reportData} />;
+          }
+
           const isUser = msg.sender === "user";
           const timeString = new Date(msg.timestamp).toLocaleTimeString([], { 
             hour: '2-digit', 

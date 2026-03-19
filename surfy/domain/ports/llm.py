@@ -50,3 +50,8 @@ class LLMPort(ABC):
             EvalResult: success 여부와 판정 이유
         """
         ...
+
+    @abstractmethod
+    async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
+        """Reporter용: 완료된 태스크 결과를 종합하여 최종 보고 생성."""
+        ...

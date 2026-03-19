@@ -1,11 +1,8 @@
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { AppState, Action, ServerMessage } from "./types";
 import { ConnectionStatus } from "./components/ConnectionStatus";
-import { PlanView } from "./components/PlanView";
-import { InterruptPanel } from "./components/InterruptPanel";
 import { ProgressBar } from "./components/ProgressBar";
 import { CancelButton } from "./components/CancelButton";
-import { ActivityLog } from "./components/ActivityLog";
 import { UnifiedInput } from "./components/UnifiedInput";
 import { MessageList } from "./components/MessageList";
 
@@ -22,6 +19,40 @@ const NODE_INFO: Record<string, { label: string; icon: string }> = {
 
 function getNodeInfo(node: string) {
   return NODE_INFO[node] || { label: node, icon: "⚙️" };
+}
+
+function formatDuration(startMs: number, endMs: number) {
+  const diffSec = Math.max(0, Math.round((endMs - startMs) / 1000));
+  if (diffSec < 60) {
+    return `${diffSec}s`;
+  }
+  const min = Math.floor(diffSec / 60);
+  const sec = diffSec % 60;
+  return `${min}m ${sec}s`;
+}
+
+function buildNodeEndDetail(node: string, updates?: any): string | undefined {
+  if (node === "research" && updates?.research_result) {
+    const r = updates.research_result;
+    const sourceCount = r.sources?.length || 0;
+    return sourceCount > 0 ? `${sourceCount}개 소스 발견` : "검색 완료";
+  }
+  if (node === "planner" && updates?.plan?.anchor) {
+    return `Plan: ${updates.plan.anchor}`;
+  }
+  if (node === "evaluator" && updates?.eval_result) {
+    const r = updates.eval_result;
+    return r.success ? "✓ Pass" : `✗ ${r.reason || "Failed"}`;
+  }
+  if (node === "scout" && updates?.route_map) {
+    const rm = updates.route_map;
+    const stepCount = rm.steps?.length || 0;
+    return stepCount > 0 ? `${stepCount}단계 탐색 → ${rm.final_url || "완료"}` : rm.scout_summary || "탐색 완료";
+  }
+  if (node === "actor" && updates?.last_page_state?.url) {
+    return `→ ${updates.last_page_state.url}`;
+  }
+  return undefined;
 }
 
 const initialState: AppState = {
@@ -62,18 +93,37 @@ function reducer(state: AppState, action: Action): AppState {
       };
     case "STATE_UPDATE": {
       const newLog = [...state.activityLog];
+      const timestamp = Date.now();
+      let newMessages = [...state.messages];
+
+      const prevPlan = state.plan ? JSON.stringify(state.plan) : null;
+      const nextPlan = action.data.plan ? JSON.stringify(action.data.plan) : null;
+      if (action.data.plan && prevPlan !== nextPlan) {
+        newMessages.push({
+          type: "plan",
+          sender: "agent",
+          text: "",
+          timestamp,
+          planData: {
+            anchor: action.data.plan.anchor,
+            tasks: action.data.plan.tasks,
+            anchor_rationale: action.data.plan.anchor_rationale,
+          },
+        });
+      }
+
       if (action.data.done && !action.data.error) {
         const last = newLog[newLog.length - 1];
         if (!last || last.node !== "__done") {
           if (last && last.status === "running") {
-            newLog[newLog.length - 1] = { ...last, endedAt: Date.now(), status: "done" as const };
+            newLog[newLog.length - 1] = { ...last, endedAt: timestamp, status: "done" as const };
           }
           newLog.push({
             node: "__done",
             label: "Completed",
             icon: "✅",
-            startedAt: Date.now(),
-            endedAt: Date.now(),
+            startedAt: timestamp,
+            endedAt: timestamp,
             status: "done" as const,
           });
         }
@@ -87,14 +137,16 @@ function reducer(state: AppState, action: Action): AppState {
         error: action.data.error,
         running: !action.data.done && !action.data.error,
         activityLog: newLog,
+        messages: newMessages,
       };
     }
     case "NODE_START": {
       const info = getNodeInfo(action.node);
+      const timestamp = Date.now();
       const newLog = [...state.activityLog];
       const lastIdx = newLog.length - 1;
       if (lastIdx >= 0 && newLog[lastIdx].node === "__loading") {
-        newLog[lastIdx] = { ...newLog[lastIdx], endedAt: Date.now(), status: "done" as const };
+        newLog[lastIdx] = { ...newLog[lastIdx], endedAt: timestamp, status: "done" as const };
       }
       let startDetail: string | undefined;
       if (action.node === "planner" && state.routeMap) {
@@ -111,7 +163,7 @@ function reducer(state: AppState, action: Action): AppState {
         node: action.node,
         label: info.label,
         icon: info.icon,
-        startedAt: Date.now(),
+        startedAt: timestamp,
         endedAt: null,
         status: "running" as const,
         detail: startDetail,
@@ -120,45 +172,79 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         currentNode: action.node,
         activityLog: newLog,
+        messages: [
+          ...state.messages,
+          {
+            type: "activity",
+            sender: "agent",
+            text: "",
+            timestamp,
+            activityData: {
+              node: action.node,
+              label: info.label,
+              icon: info.icon,
+              status: "running",
+              detail: startDetail,
+            },
+          },
+        ],
       };
     }
     case "NODE_END": {
+      const timestamp = Date.now();
+      const detail = buildNodeEndDetail(action.node, action.updates);
       const updatedLog = state.activityLog.map((entry, idx) => {
         if (idx === state.activityLog.length - 1 && entry.status === "running") {
-          let detail: string | undefined;
-          const updates = action.updates;
-          if (action.node === "research" && updates?.research_result) {
-            const r = updates.research_result;
-            const sourceCount = r.sources?.length || 0;
-            detail = sourceCount > 0
-              ? `${r.summary} (${sourceCount}개 소스)`
-              : r.summary || "검색 완료";
-          } else if (action.node === "planner" && updates?.plan?.anchor) {
-            detail = `Plan: ${updates.plan.anchor}`;
-          } else if (action.node === "evaluator" && updates?.eval_result) {
-            const r = updates.eval_result;
-            detail = r.success ? "✓ Pass" : `✗ ${r.reason || "Failed"}`;
-          } else if (action.node === "scout" && updates?.route_map) {
-            const rm = updates.route_map;
-            const stepCount = rm.steps?.length || 0;
-            detail = stepCount > 0
-              ? `${stepCount}단계 탐색 → ${rm.final_url || "완료"}`
-              : rm.scout_summary || "탐색 완료";
-          } else if (action.node === "actor" && updates?.last_page_state?.url) {
-            detail = `→ ${updates.last_page_state.url}`;
-          }
-          return { ...entry, endedAt: Date.now(), status: "done" as const, detail };
+          return { ...entry, endedAt: timestamp, status: "done" as const, detail };
         }
         return entry;
       });
+
+      const updatedMessages = [...state.messages];
+      for (let i = updatedMessages.length - 1; i >= 0; i--) {
+        const msg = updatedMessages[i];
+        if (msg.type === "activity" && msg.activityData?.status === "running") {
+          const duration = formatDuration(msg.timestamp, timestamp);
+          updatedMessages[i] = {
+            ...msg,
+            activityData: {
+              ...msg.activityData,
+              status: "done",
+              detail,
+              duration,
+            },
+          };
+          break;
+        }
+      }
+
       let newRouteMap = state.routeMap;
       if (action.node === "scout" && action.updates?.route_map) {
         newRouteMap = action.updates.route_map;
       }
-      return { ...state, currentNode: null, activityLog: updatedLog, routeMap: newRouteMap };
+      return {
+        ...state,
+        currentNode: null,
+        activityLog: updatedLog,
+        routeMap: newRouteMap,
+        messages: updatedMessages,
+      };
     }
     case "INTERRUPT":
-      return { ...state, interrupt: action.data };
+      return {
+        ...state,
+        interrupt: action.data,
+        messages: [
+          ...state.messages,
+          {
+            type: "interrupt",
+            sender: "agent",
+            text: "",
+            timestamp: Date.now(),
+            interruptData: action.data,
+          },
+        ],
+      };
     case "CANCELLED":
       return { 
         ...state, 
@@ -199,6 +285,8 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case "RUN_STARTED":
+      {
+      const timestamp = Date.now();
       return { 
         ...state, 
         running: true, 
@@ -211,16 +299,33 @@ function reducer(state: AppState, action: Action): AppState {
             node: "__loading",
             label: "Starting agent...",
             icon: "⏳",
-            startedAt: Date.now(),
+            startedAt: timestamp,
             endedAt: null,
             status: "running" as const,
           },
         ],
         messages: [
           ...state.messages,
-          { sender: "system", text: "Execution started.", timestamp: Date.now() }
+          {
+            sender: "user",
+            text: action.command,
+            timestamp,
+          },
+          {
+            type: "activity",
+            sender: "agent",
+            text: "",
+            timestamp: timestamp + 1,
+            activityData: {
+              node: "__loading",
+              label: "Starting...",
+              icon: "⏳",
+              status: "running",
+            },
+          },
         ]
       };
+      }
     case "INTERRUPT_RESOLVED":
       return { ...state, interrupt: null };
     case "CHAT_MESSAGE":
@@ -229,6 +334,20 @@ function reducer(state: AppState, action: Action): AppState {
         messages: [
           ...state.messages,
           { sender: action.sender, text: action.text, timestamp: Date.now() },
+        ],
+      };
+    case "CHAT_REPORT":
+      return {
+        ...state,
+        messages: [
+          ...state.messages,
+          {
+            type: "report",
+            sender: "agent",
+            text: "",
+            timestamp: Date.now(),
+            reportData: { summary: action.text },
+          },
         ],
       };
     case "STEP_PROGRESS": {
@@ -247,7 +366,27 @@ function reducer(state: AppState, action: Action): AppState {
           break;
         }
       }
-      return { ...state, activityLog: newLog };
+      const newMessages = [...state.messages];
+      for (let i = newMessages.length - 1; i >= 0; i--) {
+        const msg = newMessages[i];
+        if (msg.type === "activity" && msg.activityData?.status === "running") {
+          const subSteps = msg.activityData.subSteps ? [...msg.activityData.subSteps] : [];
+          subSteps.push({
+            step_number: action.data.step_number,
+            description: action.data.description,
+            action_type: action.data.action_type,
+          });
+          newMessages[i] = {
+            ...msg,
+            activityData: {
+              ...msg.activityData,
+              subSteps,
+            },
+          };
+          break;
+        }
+      }
+      return { ...state, activityLog: newLog, messages: newMessages };
     }
     case "CLEAR":
       return { ...initialState, connected: state.connected };
@@ -258,6 +397,18 @@ function reducer(state: AppState, action: Action): AppState {
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [autoApprove, setAutoApprove] = useState(() => localStorage.getItem("surfy_auto_approve") === "true");
+
+  const autoApproveRef = useRef(autoApprove);
+  useEffect(() => { autoApproveRef.current = autoApprove; }, [autoApprove]);
+
+  const toggleAutoApprove = () => {
+    setAutoApprove((prev) => {
+      const next = !prev;
+      localStorage.setItem("surfy_auto_approve", String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     const handleMessage = (message: ServerMessage) => {
@@ -281,6 +432,22 @@ export default function App() {
           break;
         case "interrupt":
           dispatch({ type: "INTERRUPT", data: message.data });
+          if (autoApproveRef.current && message.data?.interrupt_type !== "human_gateway") {
+            setTimeout(() => {
+              chrome.runtime.sendMessage({
+                source: "sidepanel",
+                payload: {
+                  type: "resume",
+                  data: {
+                    interrupt_type: message.data?.interrupt_type,
+                    value: { approved: true, modification: null },
+                  },
+                },
+              });
+              dispatch({ type: "INTERRUPT_RESOLVED" });
+              dispatch({ type: "CHAT_MESSAGE", sender: "system", text: "Auto-approved" });
+            }, 300);
+          }
           break;
         case "cancelled":
           dispatch({ type: "CANCELLED" });
@@ -301,7 +468,7 @@ export default function App() {
           break;
         case "chat":
           if (message.data?.message) {
-            dispatch({ type: "CHAT_MESSAGE", sender: "system", text: message.data.message });
+            dispatch({ type: "CHAT_REPORT", text: message.data.message });
           }
           break;
       }
@@ -330,17 +497,18 @@ export default function App() {
 
   const totalTasks = state.plan?.tasks.length || 0;
 
-  const handleChatSend = (text: string) => {
+  const handleChatSend = (text: string, interruptValue?: { approved?: boolean; modification?: string | null }) => {
     dispatch({ type: "CHAT_MESSAGE", sender: "user", text });
     
     if (state.interrupt) {
+      const value = interruptValue || { approved: true, modification: text };
       chrome.runtime.sendMessage({
         source: "sidepanel",
         payload: {
           type: "resume",
           data: {
             interrupt_type: state.interrupt.interrupt_type,
-            value: { approved: true, modification: text },
+            value,
           },
         },
       });
@@ -378,21 +546,22 @@ export default function App() {
     });
   };
 
-  const handleCommandRetry = () => {
-    if (!state.lastCommand) return;
-    dispatch({ type: "RUN_STARTED", command: state.lastCommand });
-    chrome.runtime.sendMessage({
-      source: "sidepanel",
-      payload: { type: "run", data: { command: state.lastCommand } },
-    });
-  };
-
   return (
     <div className="flex flex-col h-screen bg-gray-50 font-sans">
-      {/* Minimal Header */}
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <h1 className="text-xl font-bold text-blue-600">Surfy</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleAutoApprove}
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              autoApprove
+                ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            }`}
+            title={autoApprove ? "Auto-approve ON — 플랜 자동 승인" : "Auto-approve OFF — 수동 승인"}
+          >
+            {autoApprove ? "⚡ Auto" : "✋ Manual"}
+          </button>
           {(state.done || state.error || state.activityLog.length > 0) && !state.running && (
             <button
               onClick={handleClear}
@@ -406,53 +575,22 @@ export default function App() {
         </div>
       </header>
 
-      {/* Status Panel — scrollable */}
-      <div className="flex-1 overflow-y-auto p-4 relative">
-        {state.done && !state.error && (
-          <div className="bg-green-50 border border-green-200 text-green-700 p-3 rounded-md mb-4 text-sm flex items-center gap-2">
-            <span className="text-lg">✓</span>
-            <span className="font-medium">완료</span>
-          </div>
-        )}
-
-        {state.error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-md mb-4 text-sm flex items-center justify-between">
-            <div>
-              <span className="font-bold">Error:</span> {state.error}
-            </div>
-            {state.lastCommand && (
-              <button
-                onClick={handleCommandRetry}
-                className="ml-3 px-3 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700 transition-colors flex-shrink-0"
-              >
-                Retry
-              </button>
-            )}
-          </div>
-        )}
-
-        <ActivityLog entries={state.activityLog} />
-
-        <PlanView
-          plan={state.plan}
-          routeMap={state.routeMap}
-          currentTaskIdx={state.currentTaskIdx}
-          done={state.done}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3">
+        <MessageList
+          messages={state.messages}
+          onInterruptAction={(value) => {
+            const fallbackText =
+              typeof value?.modification === "string" && value.modification.length > 0
+                ? value.modification
+                : value?.approved === true
+                  ? "Approved"
+                  : "Stop";
+            handleChatSend(fallbackText, value);
+          }}
         />
-
-        {state.interrupt && (
-          <InterruptPanel 
-            interrupt={state.interrupt} 
-            onResolved={() => dispatch({ type: "INTERRUPT_RESOLVED" })}
-          />
-        )}
       </div>
 
-      {/* Bottom Chat Section — fixed */}
       <div className="flex-shrink-0 bg-white border-t border-gray-200 p-3 flex flex-col gap-2">
-        <div className="max-h-48 flex flex-col">
-          <MessageList messages={state.messages} />
-        </div>
         <UnifiedInput state={state} onRun={handleRunStarted} onChat={handleChatSend} />
         <div className="flex items-center justify-between mt-1">
           <ProgressBar completed={state.completedCount} total={totalTasks} />
