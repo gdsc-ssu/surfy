@@ -30,10 +30,8 @@ from surfy.domain.models import (
 from surfy.domain.ports import BrowserPort, LLMPort
 from surfy.domain.services import ActorService
 
-# ============================================================
-# Mock 테스트 - API 없이 ReAct 루프 로직 검증
-# ============================================================
-
+# =====================================================# Mock 테스트 - API 없이 ReAct 루프 로직 검증
+# =====================================================
 
 class MockBrowser(BrowserPort):
     def __init__(self):
@@ -72,6 +70,7 @@ class MockLLM(LLMPort):
         task: Task,
         page_state: PageState,
         history: list[HistoryEntry],
+        **kwargs,
     ) -> ActorOutput:
         if self._index >= len(self._actions):
             return ActorOutput(thinking="Done", action_type=ActionType.DONE)
@@ -100,6 +99,9 @@ class MockLLM(LLMPort):
         """Mock evaluate — Phase 2 테스트에서는 사용하지 않음."""
         return EvalResult(success=True, reason="Mock evaluation")
 
+    async def extract_intent(self, command: str):
+        from surfy.domain.models.cache import CommandIntent
+        return CommandIntent(service="unknown", action="navigate")
     async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
         return f"Report for {command}"
 
@@ -186,10 +188,8 @@ async def test_mock_react_loop_with_action_failure():
     assert browser.actions_executed == ["CLICK", "CLICK"]
 
 
-# ============================================================
-# 실제 통합 테스트 - Chrome + Anthropic API 사용
-# ============================================================
-
+# =====================================================# 실제 통합 테스트 - Chrome + Anthropic API 사용
+# =====================================================
 CDP_PORT = 9222
 CDP_POLL_INTERVAL = 0.2
 CDP_POLL_TIMEOUT = 10

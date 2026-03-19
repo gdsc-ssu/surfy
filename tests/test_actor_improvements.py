@@ -54,7 +54,9 @@ class MockLLM(LLMPort):
     def __init__(self):
         self.task_descriptions: list[str] = []
 
-    async def decide_action(self, task: Task, page_state: PageState, history: list[HistoryEntry]) -> ActorOutput:
+    async def decide_action(
+        self, task: Task, page_state: PageState, history: list[HistoryEntry], **kwargs
+    ) -> ActorOutput:
         self.task_descriptions.append(task.description)
         # 항상 CLICK 반환하여 루프 유도
         return ActorOutput(thinking="Clicking", action_type=ActionType.CLICK, target_id=1)
@@ -68,6 +70,9 @@ class MockLLM(LLMPort):
     async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:
         return EvalResult(success=True, reason="Mock evaluation")
 
+    async def extract_intent(self, command: str):
+        from surfy.domain.models.cache import CommandIntent
+        return CommandIntent(service="unknown", action="navigate")
     async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
         return f"Report for {command}"
 

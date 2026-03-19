@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
+from surfy.adapters.cache import JsonFileCacheAdapter
 from surfy.adapters.llm import LangChainLLMAdapter
 from surfy.adapters.research import DdgsSearchAdapter
 from surfy.config import Settings
@@ -109,6 +110,7 @@ class SessionStore:
     last_activity_at: float = 0.0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     thread_id: str = field(default_factory=_new_thread_id)
+    pending_interrupt: dict[str, Any] | None = None
 
 
 _SESSION = SessionStore()
@@ -163,6 +165,7 @@ async def _cleanup_runtime() -> None:
 
     _SESSION.current_state = None
     _SESSION.chat_queue.clear()
+    _SESSION.pending_interrupt = None
 
 
 async def _cleanup_runtime_from_watchdog() -> None:
@@ -181,6 +184,7 @@ async def _cleanup_runtime_from_watchdog() -> None:
 
     _SESSION.current_state = None
     _SESSION.chat_queue.clear()
+    _SESSION.pending_interrupt = None
 
 
 async def _browser_watchdog() -> None:
@@ -242,8 +246,10 @@ def _initial_state(command: str) -> AgentState:
         "plan_approved": False,
         "user_feedback": None,
         "auth_required": False,
+        "post_auth": False,
         "done": False,
         "error": None,
+        "cache_hit": False,
     }
 
 
@@ -369,6 +375,8 @@ async def _get_or_create_runtime() -> ServerRuntime:
             checkpointer=MemorySaver(),
             scout_max_steps=settings.scout.max_steps,
             handoff_on_auth=settings.handoff_on_auth,
+            cache=JsonFileCacheAdapter(),
+            llm=llm,
         )
 
         langfuse_handler = create_langfuse_handler()
@@ -479,14 +487,14 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
                 if _SESSION.chat_queue:
                     payload["queued_messages"] = list(_SESSION.chat_queue)
                     _SESSION.chat_queue.clear()
-                await _send_message(
-                    InterruptMessage(
-                        data=InterruptMessageData(
-                            interrupt_type=_interrupt_type_from(payload),
-                            payload=payload,
-                        )
+                interrupt_msg = InterruptMessage(
+                    data=InterruptMessageData(
+                        interrupt_type=_interrupt_type_from(payload),
+                        payload=payload,
                     )
                 )
+                _SESSION.pending_interrupt = interrupt_msg.model_dump()
+                await _send_message(interrupt_msg)
     except asyncio.CancelledError:
         raise
     except Exception as e:
@@ -500,6 +508,7 @@ async def _clear_session() -> None:
     await _cancel_graph_task()
     _SESSION.current_state = None
     _SESSION.chat_queue.clear()
+    _SESSION.pending_interrupt = None
     _SESSION.thread_id = _new_thread_id()
     logger.info("Session cleared — new thread_id: %s", _SESSION.thread_id)
     await _send_message(ConnectedMessage(data=ConnectedMessageData(state=None, running=False)))
@@ -518,6 +527,7 @@ async def _start_run(command: str) -> None:
     _SESSION.thread_id = _new_thread_id()
     _SESSION.current_state = _to_plain(_initial_state(command))
     _SESSION.chat_queue.clear()
+    _SESSION.pending_interrupt = None
     _ensure_asyncio_create_task_compat()
     _SESSION.graph_task = asyncio.create_task(_handle_graph_stream(_initial_state(command)))
 
@@ -527,6 +537,7 @@ async def _start_resume(value: dict[str, Any]) -> None:
         await _send_message(ErrorMessage(data=ErrorMessageData(message="Graph is already running", node=None)))
         return
 
+    _SESSION.pending_interrupt = None
     _ensure_asyncio_create_task_compat()
     _SESSION.graph_task = asyncio.create_task(_handle_graph_stream(Command(resume=value)))
 
@@ -534,6 +545,7 @@ async def _start_resume(value: dict[str, Any]) -> None:
 async def _cancel_run() -> None:
     task = _SESSION.graph_task
     if task is None or task.done():
+        _SESSION.pending_interrupt = None
         await _send_message(CancelledMessage(data=CancelledMessageData(reason="No running task")))
         _SESSION.graph_task = None
         return
@@ -544,6 +556,7 @@ async def _cancel_run() -> None:
     except asyncio.CancelledError:
         pass
 
+    _SESSION.pending_interrupt = None
     await _send_message(CancelledMessage(data=CancelledMessageData(reason="Cancelled by client")))
 
 
@@ -570,6 +583,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     is_running = _SESSION.graph_task is not None and not _SESSION.graph_task.done()
     await _send_message(ConnectedMessage(data=ConnectedMessageData(state=_SESSION.current_state, running=is_running)))
+    if is_running and _SESSION.pending_interrupt is not None:
+        await websocket.send_text(InterruptMessage.model_validate(_SESSION.pending_interrupt).model_dump_json())
 
     heartbeat_task = asyncio.create_task(_heartbeat_loop(websocket))
 

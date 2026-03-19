@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from typing import Literal
 
@@ -8,6 +9,8 @@ from langgraph.types import interrupt
 
 from surfy.domain.models import ActionType, ActorOutput, EvalResult, HistoryEntry, RouteMap, Task
 from surfy.domain.models.research import ResearchResult
+from surfy.domain.ports.cache import CachePort
+from surfy.domain.ports.llm import LLMPort
 from surfy.domain.services import (
     ActorService,
     EvaluatorService,
@@ -63,7 +66,57 @@ def compile_graph(
     checkpointer: BaseCheckpointSaver | None = None,
     scout_max_steps: int = 20,
     handoff_on_auth: bool = True,
+    cache: CachePort | None = None,
+    llm: LLMPort | None = None,
 ) -> CompiledStateGraph:
+    async def _cache_key(command: str) -> str:
+        if llm is None:
+            return hashlib.sha256(command.lower().strip().encode()).hexdigest()[:16]
+        intent = await llm.extract_intent(command)
+        parts = [intent.service]
+        if intent.from_location:
+            parts.append(intent.from_location)
+        if intent.to_location:
+            parts.append(intent.to_location)
+        parts.append(intent.action)
+        return ":".join(p.lower() for p in parts)
+
+    async def cache_lookup_node(state: AgentState) -> dict[str, object]:
+        if cache is None:
+            return {"cache_hit": False}
+        key = await _cache_key(state["command"])
+        scenario = cache.get(key)
+        if scenario is None:
+            return {"cache_hit": False}
+        logger.info("Cache hit: key=%s command=%s", key, state["command"][:50])
+        return {
+            "cache_hit": True,
+            "route_map": scenario.route_map,
+            "plan": scenario.plan,
+            "current_task_idx": 0,
+            "retry_count": 0,
+            "eval_result": None,
+            "error": None,
+        }
+
+    async def cache_store_node(state: AgentState) -> dict[str, object]:
+        if cache is None or state.get("cache_hit", False):
+            return {}
+        route_map = state.get("route_map")
+        plan = state.get("plan")
+        if route_map is None or plan is None:
+            return {}
+        from surfy.domain.models.cache import CachedScenario
+        command = state["command"]
+        key = await _cache_key(command)
+        cache.set(CachedScenario(
+            cache_key=key,
+            command_normalized=command.lower().strip(),
+            route_map=route_map,
+            plan=plan,
+        ))
+        return {}
+
     async def research_node(state: AgentState) -> dict[str, object]:
         if _is_simple_navigation_command(state["command"]):
             return {"research_result": None}
@@ -81,8 +134,6 @@ def compile_graph(
             route_map: RouteMap = await scout.scout(
                 state["command"], max_steps=scout_max_steps, research_result=state.get("research_result")
             )
-            if route_map.scout_completed:
-                return {"route_map": route_map, "done": True}
             return {"route_map": route_map}
         except Exception as e:
             logger.warning("Scout failed: %s. Falling back to blind planning.", e)
@@ -191,7 +242,22 @@ def compile_graph(
         if task is None:
             return {"done": True}
 
-        result = await actor.execute_task(task)
+        plan = state.get("plan")
+        command = state.get("command", "")
+        if plan and getattr(plan, "anchor", None):
+            task = Task(
+                description=f"[사용자 원래 명령: {command}]\n[최종 목표: {plan.anchor}]\n\n{task.description}",
+                success_criteria=task.success_criteria,
+                target_url=task.target_url,
+            )
+
+        post_auth = state.get("post_auth", False)
+        initial_memory = (
+            "[인증 완료] 사용자가 인증/로그인을 완료했습니다. 인증 이후 단계를 계속 진행하세요."
+            if post_auth
+            else ""
+        )
+        result = await actor.execute_task(task, initial_memory=initial_memory)
         action_type = ActionType.DONE if result.success else ActionType.STUCK
         summary_action = ActorOutput(thinking=task.description, action_type=action_type, value=result.message)
         history_entry = HistoryEntry(action=summary_action, result=result, step=None)
@@ -203,6 +269,7 @@ def compile_graph(
             "last_page_state": result.page_state,
             "error": None if result.success else result.message,
             "auth_required": is_auth,
+            "post_auth": False,
         }
 
     async def evaluator_node(state: AgentState) -> dict[str, object]:
@@ -280,7 +347,7 @@ def compile_graph(
         if not result.get("approved"):
             return {"done": True}
         if is_auth:
-            return {"retry_count": 0, "eval_result": None, "auth_required": False, "error": None}
+            return {"retry_count": 0, "eval_result": None, "auth_required": False, "post_auth": True, "error": None}
         return {"retry_count": 0}
 
     def completion_check_node(state: AgentState) -> dict[str, object]:
@@ -299,11 +366,24 @@ def compile_graph(
             return {"done": True}
         return {}
 
+    def route_after_cache_lookup(state: AgentState) -> Literal["research", "plan_approval"]:
+        return "plan_approval" if state.get("cache_hit", False) else "research"
+
     async def report_node(state: AgentState) -> dict[str, object]:
         if reporter is None:
             return {"report_result": None}
         command = state["command"]
         completed_tasks = list(state["completed_tasks"])
+
+        if not completed_tasks:
+            route_map = state.get("route_map")
+            scout_summary = (route_map.scout_summary if route_map else "") or ""
+            raw_research = state.get("research_result")
+            research_summary = raw_research.summary if raw_research and hasattr(raw_research, "summary") else ""
+            context = scout_summary or research_summary
+            if context:
+                completed_tasks = [Task(description="수집된 정보", result=context)]
+
         try:
             report_text = await reporter.report(command, completed_tasks)
             return {"report_result": report_text}
@@ -316,9 +396,9 @@ def compile_graph(
             return "report"
         return "planner"
 
-    def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "END"]:
+    def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "cache_store", "END"]:
         if state["done"]:
-            return "END"
+            return "cache_store"
         task = _current_task(state)
         if task is None:
             return "END"
@@ -326,18 +406,18 @@ def compile_graph(
             return "plan_approval"
         return "actor"
 
-    def route_after_approval(state: AgentState) -> Literal["actor", "planner", "END"]:
+    def route_after_approval(state: AgentState) -> Literal["actor", "planner", "cache_store", "END"]:
         if state["done"]:
-            return "END"
+            return "cache_store"
         if state.get("user_feedback"):
             return "planner"
         return "actor"
 
     def route_after_evaluator(
         state: AgentState,
-    ) -> Literal["planner", "actor", "human_gateway", "completion_check", "END"]:
+    ) -> Literal["planner", "actor", "human_gateway", "completion_check", "cache_store", "END"]:
         if state["done"]:
-            return "END"
+            return "cache_store"
 
         eval_result = state["eval_result"]
         if eval_result is None:
@@ -356,20 +436,22 @@ def compile_graph(
             return "planner"
         return "human_gateway"
 
-    def route_after_human(state: AgentState) -> Literal["planner", "END"]:
+    def route_after_human(state: AgentState) -> Literal["planner", "cache_store", "END"]:
         if state["done"]:
-            return "END"
+            return "cache_store"
         return "planner"
 
-    def route_after_completion(state: AgentState) -> Literal["planner", "report"]:
+    def route_after_completion(state: AgentState) -> Literal["planner", "cache_store"]:
         if state["done"]:
-            return "report"
+            return "cache_store"
         return "planner"
 
     graph_builder = StateGraph(AgentState)
+    graph_builder.add_node("cache_lookup", cache_lookup_node)
     graph_builder.add_node("research", research_node)
     graph_builder.add_node("scout", scout_node)
     graph_builder.add_node("planner", planner_node)
+    graph_builder.add_node("cache_store", cache_store_node)
     graph_builder.add_node("plan_approval", plan_approval_node)
     graph_builder.add_node("actor", actor_node)
     graph_builder.add_node("evaluator", evaluator_node)
@@ -377,8 +459,13 @@ def compile_graph(
     graph_builder.add_node("completion_check", completion_check_node)
     graph_builder.add_node("report", report_node)
 
-    graph_builder.set_entry_point("research")
+    graph_builder.set_entry_point("cache_lookup")
 
+    graph_builder.add_conditional_edges(
+        "cache_lookup",
+        route_after_cache_lookup,
+        {"research": "research", "plan_approval": "plan_approval"},
+    )
     graph_builder.add_edge("research", "scout")
     graph_builder.add_conditional_edges(
         "scout",
@@ -395,6 +482,7 @@ def compile_graph(
         {
             "plan_approval": "plan_approval",
             "actor": "actor",
+            "cache_store": "cache_store",
             "END": END,
         },
     )
@@ -404,6 +492,7 @@ def compile_graph(
         {
             "actor": "actor",
             "planner": "planner",
+            "cache_store": "cache_store",
             "END": END,
         },
     )
@@ -416,6 +505,7 @@ def compile_graph(
             "actor": "actor",
             "human_gateway": "human_gateway",
             "completion_check": "completion_check",
+            "cache_store": "cache_store",
             "END": END,
         },
     )
@@ -424,6 +514,7 @@ def compile_graph(
         route_after_human,
         {
             "planner": "planner",
+            "cache_store": "cache_store",
             "END": END,
         },
     )
@@ -432,9 +523,10 @@ def compile_graph(
         route_after_completion,
         {
             "planner": "planner",
-            "report": "report",
+            "cache_store": "cache_store",
         },
     )
+    graph_builder.add_edge("cache_store", "report")
     graph_builder.add_edge("report", END)
 
     return graph_builder.compile(checkpointer=checkpointer)

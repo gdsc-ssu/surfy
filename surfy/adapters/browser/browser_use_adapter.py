@@ -8,6 +8,7 @@ from browser_use.browser.events import (
     GoBackEvent,
     NavigateToUrlEvent,
     ScrollEvent,
+    SelectDropdownOptionEvent,
     SendKeysEvent,
     TypeTextEvent,
 )
@@ -101,6 +102,15 @@ class BrowserUseAdapter(BrowserPort):
                     if node is None:
                         raise ValueError(f"Element index {action.target_id} not found")
                     event = self._session.event_bus.dispatch(TypeTextEvent(node=node, text=action.value, clear=True))
+                    await event
+                    await event.event_result(raise_if_any=True, raise_if_none=False)
+                case ActionType.SELECT:
+                    assert action.target_id is not None, "SELECT requires target_id"
+                    assert action.value, "SELECT requires value"
+                    node = await self._session.get_element_by_index(action.target_id)
+                    if node is None:
+                        raise ValueError(f"Element index {action.target_id} not found")
+                    event = self._session.event_bus.dispatch(SelectDropdownOptionEvent(node=node, text=action.value))
                     await event
                     await event.event_result(raise_if_any=True, raise_if_none=False)
                 case ActionType.SCROLL_DOWN:

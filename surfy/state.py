@@ -22,5 +22,7 @@ class AgentState(TypedDict):
     research_result: ResearchResult | None
     report_result: NotRequired[str | None]
     auth_required: bool
+    post_auth: bool
     done: bool
     error: str | None
+    cache_hit: bool

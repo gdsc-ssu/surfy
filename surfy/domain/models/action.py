@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class ActionType(str, Enum):
     CLICK = "CLICK"
     TYPE = "TYPE"
+    SELECT = "SELECT"
     SCROLL_DOWN = "SCROLL_DOWN"
     SCROLL_UP = "SCROLL_UP"
     GO_TO_URL = "GO_TO_URL"
