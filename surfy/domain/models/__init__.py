@@ -1,3 +1,4 @@
+from surfy.domain.models.cache import CachedScenario, CommandIntent
 from surfy.domain.models.action import ActionType, BrowserAction
 from surfy.domain.models.actor import ActorOutput
 from surfy.domain.models.criteria import SuccessCriteria
@@ -27,6 +28,8 @@ from surfy.domain.models.screen import PageState
 from surfy.domain.models.task import Task
 
 __all__ = [
+    "CachedScenario",
+    "CommandIntent",
     "ActionType",
     "ActorOutput",
     "BrowserAction",

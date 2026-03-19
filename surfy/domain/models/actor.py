@@ -22,6 +22,11 @@ class ActorOutput(BaseModel):
                 raise ValueError("TYPE action requires target_id")
             if self.value is None:
                 raise ValueError("TYPE action requires value")
+        if self.action_type == ActionType.SELECT:
+            if self.target_id is None:
+                raise ValueError("SELECT action requires target_id")
+            if self.value is None:
+                raise ValueError("SELECT action requires value")
         if self.action_type == ActionType.GO_TO_URL and self.value is None:
             raise ValueError("GO_TO_URL action requires value (URL)")
         if self.action_type == ActionType.SEND_KEYS and self.value is None:

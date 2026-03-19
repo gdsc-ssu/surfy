@@ -9,7 +9,7 @@ from string import Template
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
-from surfy.domain.models import ActorOutput, EvalResult, HistoryEntry, PageState, Task
+from surfy.domain.models import ActorOutput, CommandIntent, EvalResult, HistoryEntry, PageState, Task
 from surfy.domain.models.criteria import SuccessCriteria
 from surfy.domain.models.plan import Plan
 from surfy.domain.ports import LLMPort
@@ -86,6 +86,7 @@ class LangChainLLMAdapter(LLMPort):
         task: Task,
         page_state: PageState,
         history: list[HistoryEntry],
+        previous_memory: str = "",
     ) -> ActorOutput:
         """Actor용: 현재 페이지 상태와 히스토리를 기반으로 다음 액션 결정."""
         template_str = self._actor_template.replace("{{", "${").replace("}}", "}")
@@ -97,11 +98,13 @@ class LangChainLLMAdapter(LLMPort):
 
         prompt = template.safe_substitute(
             task_description=task.description,
+            success_criteria=task.success_criteria.description or "(없음)",
             target_url=task.target_url or "(없음)",
             url=page_state.url,
             title=page_state.title,
             dom_text=dom_text,
             formatted_history=self._format_history(history),
+            previous_memory=previous_memory or "(없음)",
             auth_instruction=AUTH_INSTRUCTION if self._handoff_on_auth else "",
         )
 
@@ -132,6 +135,22 @@ class LangChainLLMAdapter(LLMPort):
 
         if isinstance(result, dict):
             return Plan(**result)
+        return result  # type: ignore[return-value]
+
+    async def extract_intent(self, command: str) -> CommandIntent:
+        """Cache용: 명령어에서 구조화된 의도 추출."""
+        model = self._model.with_structured_output(CommandIntent)
+        prompt = (
+            "사용자의 웹 자동화 명령에서 의도를 추출하세요.\n\n"
+            f"명령: {command}\n\n"
+            "- service: 사용할 웹 서비스 소문자 (예: srt, ktx, 정부24, 인터파크, 코레일). 알 수 없으면 'unknown'\n"
+            "- from_location: 출발지 (해당 없으면 null)\n"
+            "- to_location: 도착지 (해당 없으면 null)\n"
+            "- action: 수행할 작업 소문자 (예: 예매, 조회, 신청, navigate)"
+        )
+        result = await model.ainvoke([HumanMessage(content=prompt)])
+        if isinstance(result, dict):
+            return CommandIntent(**result)
         return result  # type: ignore[return-value]
 
     async def evaluate(self, criteria: SuccessCriteria, page_state: PageState) -> EvalResult:

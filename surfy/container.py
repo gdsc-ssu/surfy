@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from dependency_injector import containers, providers
 
 from surfy.adapters.browser import BrowserUseAdapter
+from surfy.adapters.cache import JsonFileCacheAdapter
 from surfy.adapters.llm import LangChainLLMAdapter
 from surfy.config import Settings
 from surfy.domain.services import ActorService
@@ -40,6 +41,8 @@ class Container(containers.DeclarativeContainer):
         chrome_profile=config.provided.browser.chrome_profile,
         cdp_url=config.provided.browser.cdp_url,
     )
+
+    scenario_cache = providers.Singleton(JsonFileCacheAdapter)
 
     # Services
     actor_service = providers.Factory(

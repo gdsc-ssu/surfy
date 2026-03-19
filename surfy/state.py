@@ -21,5 +21,7 @@ class AgentState(TypedDict):
     user_feedback: str | None
     research_result: ResearchResult | None
     auth_required: bool
+    post_auth: bool
     done: bool
     error: str | None
+    cache_hit: bool
