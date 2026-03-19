@@ -35,7 +35,7 @@ function buildNodeEndDetail(node: string, updates?: any): string | undefined {
   if (node === "research" && updates?.research_result) {
     const r = updates.research_result;
     const sourceCount = r.sources?.length || 0;
-    return sourceCount > 0 ? `${r.summary} (${sourceCount}개 소스)` : r.summary || "검색 완료";
+    return sourceCount > 0 ? `${sourceCount}개 소스 발견` : "검색 완료";
   }
   if (node === "planner" && updates?.plan?.anchor) {
     return `Plan: ${updates.plan.anchor}`;
