@@ -28,6 +28,7 @@ def _initial_state(command: str) -> dict:
         "user_feedback": None,
         "research_result": None,
         "auth_required": False,
+        "post_auth": False,
         "done": False,
         "error": None,
     }
@@ -97,7 +98,8 @@ async def test_research_node_handles_researcher_failure():
 
 
 @pytest.mark.asyncio
-async def test_scout_completed_skips_planner():
+async def test_scout_completed_routes_to_planner():
+    """scout_completed=True여도 항상 planner로 라우팅된다."""
     researcher = MagicMock()
     researcher.research = AsyncMock(return_value=None)
 
@@ -109,7 +111,7 @@ async def test_scout_completed_skips_planner():
     )
 
     planner = MagicMock()
-    planner.create_plan = AsyncMock()
+    planner.create_plan = AsyncMock(return_value=Plan(anchor="목표", tasks=[], anchor_rationale="r"))
     planner.next_tasks = AsyncMock()
     planner.replan = AsyncMock()
 
@@ -119,9 +121,8 @@ async def test_scout_completed_skips_planner():
 
     result = await graph.ainvoke(_initial_state("네이버 열어"))
 
-    assert result["done"] is True
     assert result["route_map"].scout_completed is True
-    planner.create_plan.assert_not_awaited()
+    planner.create_plan.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -368,7 +369,7 @@ async def test_eval_failure_replan_passes_completed_tasks_to_planner():
 
     call_count = 0
 
-    async def actor_side_effect(task):
+    async def actor_side_effect(task, **kwargs):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -540,7 +541,7 @@ async def test_auth_resume_clears_stale_state_and_retries_task():
 
     call_count = 0
 
-    async def actor_side_effect(task):
+    async def actor_side_effect(task, **kwargs):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
