@@ -6,7 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
-from surfy.domain.models import RouteMap, RouteStep, SuccessCriteria, Task
+from surfy.domain.models import EvalResult, PageState, RouteMap, RouteStep, StepResult, SuccessCriteria, Task
 from surfy.domain.models.plan import Plan
 from surfy.domain.models.research import ResearchResult
 from surfy.graph import _is_simple_navigation_command, compile_graph
@@ -27,6 +27,7 @@ def _initial_state(command: str) -> dict:
         "plan_approved": False,
         "user_feedback": None,
         "research_result": None,
+        "auth_required": False,
         "done": False,
         "error": None,
     }
@@ -278,3 +279,306 @@ async def test_plan_modification_resume_triggers_replan_and_new_approval_interru
 
     after_resume = await graph.aget_state(config)
     assert after_resume.next == ("plan_approval",)
+
+
+@pytest.mark.asyncio
+async def test_eval_failure_replan_resets_plan_approved_and_requires_reapproval():
+    """#62 재현: eval 실패 → replan 후 plan_approved=False 리셋 → 새 approval interrupt 발생."""
+    researcher = MagicMock()
+    researcher.research = AsyncMock(return_value=None)
+
+    scout = MagicMock()
+    scout.scout = AsyncMock(return_value=RouteMap(steps=[], final_url="https://srt.com", scout_summary="SRT"))
+
+    page_state = PageState(url="https://srt.com", title="SRT", dom_text="출발역 입력")
+
+    initial_plan = Plan(
+        anchor="SRT 예약",
+        anchor_rationale="예약 흐름",
+        tasks=[Task(description="출발역 선택", success_criteria=SuccessCriteria(text_visible="출발역"))],
+    )
+    replanned = Plan(
+        anchor="SRT 예약",
+        anchor_rationale="다른 접근",
+        tasks=[Task(description="다른 방식으로 출발역 선택", success_criteria=SuccessCriteria(text_visible="출발역"))],
+    )
+
+    planner = MagicMock()
+    planner.create_plan = AsyncMock(return_value=initial_plan)
+    planner.next_tasks = AsyncMock()
+    planner.replan = AsyncMock(return_value=replanned)
+
+    actor = MagicMock()
+    actor.execute_task = AsyncMock(
+        return_value=StepResult(success=False, message="Loop detected", page_state=page_state)
+    )
+
+    evaluator = MagicMock()
+    evaluator.evaluate = AsyncMock(return_value=EvalResult(success=False, reason="출발역 미선택"))
+
+    graph = compile_graph(
+        scout=scout,
+        planner=planner,
+        actor=actor,
+        evaluator=evaluator,
+        researcher=researcher,
+        checkpointer=MemorySaver(),
+    )
+
+    config = cast(RunnableConfig, {"configurable": {"thread_id": "eval_failure_replan_approval"}})
+
+    async for _ in graph.astream(_initial_state("SRT 예약"), config):
+        pass
+
+    state_before = await graph.aget_state(config)
+    assert state_before.next == ("plan_approval",)
+
+    async for _ in graph.astream(Command(resume={"approved": True}), config):
+        pass
+
+    planner.replan.assert_awaited_once()
+
+    state_after = await graph.aget_state(config)
+    assert state_after.next == ("plan_approval",), "replan 후 plan_approved=False여야 새 approval interrupt 발생"
+
+
+@pytest.mark.asyncio
+async def test_eval_failure_replan_passes_completed_tasks_to_planner():
+    """#62 재현: replan 시 completed_tasks 컨텍스트가 planner.replan에 전달됨."""
+    researcher = MagicMock()
+    researcher.research = AsyncMock(return_value=None)
+
+    scout = MagicMock()
+    scout.scout = AsyncMock(return_value=RouteMap(steps=[], final_url="https://ex.com", scout_summary="요약"))
+
+    page_state = PageState(url="https://ex.com/step2", title="Step 2", dom_text="content")
+
+    task_a = Task(description="태스크 A", success_criteria=SuccessCriteria(text_visible="A 완료"))
+    task_b = Task(description="태스크 B", success_criteria=SuccessCriteria(text_visible="B 완료"))
+
+    initial_plan = Plan(anchor="목표", anchor_rationale="이유", tasks=[task_a, task_b])
+    replanned = Plan(
+        anchor="목표", anchor_rationale="재계획", tasks=[Task(description="태스크 B 재시도")]
+    )
+
+    planner = MagicMock()
+    planner.create_plan = AsyncMock(return_value=initial_plan)
+    planner.next_tasks = AsyncMock()
+    planner.replan = AsyncMock(return_value=replanned)
+
+    call_count = 0
+
+    async def actor_side_effect(task):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return StepResult(success=True, message="A 완료", page_state=page_state)
+        return StepResult(success=False, message="B 실패", page_state=page_state)
+
+    actor = MagicMock()
+    actor.execute_task = AsyncMock(side_effect=actor_side_effect)
+
+    eval_count = 0
+
+    async def eval_side_effect(task, ps):
+        nonlocal eval_count
+        eval_count += 1
+        if eval_count == 1:
+            return EvalResult(success=True, reason="A 성공")
+        return EvalResult(success=False, reason="B 실패")
+
+    evaluator = MagicMock()
+    evaluator.evaluate = AsyncMock(side_effect=eval_side_effect)
+
+    graph = compile_graph(
+        scout=scout,
+        planner=planner,
+        actor=actor,
+        evaluator=evaluator,
+        researcher=researcher,
+        checkpointer=MemorySaver(),
+    )
+
+    config = cast(RunnableConfig, {"configurable": {"thread_id": "eval_replan_completed_tasks"}})
+
+    async for _ in graph.astream(_initial_state("목표 달성"), config):
+        pass
+
+    state1 = await graph.aget_state(config)
+    assert state1.next == ("plan_approval",)
+
+    async for _ in graph.astream(Command(resume={"approved": True}), config):
+        pass
+
+    planner.replan.assert_awaited_once()
+    replan_kwargs = planner.replan.await_args.kwargs
+    assert "completed_tasks" in replan_kwargs
+    completed = replan_kwargs["completed_tasks"]
+    assert len(completed) == 1
+    assert completed[0].description == "태스크 A"
+
+
+@pytest.mark.asyncio
+async def test_auth_required_routes_to_human_gateway_immediately():
+    researcher = MagicMock()
+    researcher.research = AsyncMock(return_value=None)
+
+    scout = MagicMock()
+    scout.scout = AsyncMock(return_value=RouteMap(steps=[], final_url="https://gov.kr", scout_summary="정부24"))
+
+    page_state = PageState(url="https://gov.kr/auth", title="본인인증", dom_text="인증 필요")
+    initial_plan = Plan(
+        anchor="등본 발급",
+        anchor_rationale="발급 흐름",
+        tasks=[Task(description="등본 신청", success_criteria=SuccessCriteria(text_visible="신청"))],
+    )
+
+    planner = MagicMock()
+    planner.create_plan = AsyncMock(return_value=initial_plan)
+    planner.next_tasks = AsyncMock()
+    planner.replan = AsyncMock()
+
+    actor = MagicMock()
+    actor.execute_task = AsyncMock(
+        return_value=StepResult(success=False, message="AUTH_REQUIRED: 본인인증 필요", page_state=page_state)
+    )
+
+    evaluator = MagicMock()
+    evaluator.evaluate = AsyncMock(return_value=EvalResult(success=False, reason="인증 페이지"))
+
+    graph = compile_graph(
+        scout=scout, planner=planner, actor=actor, evaluator=evaluator,
+        researcher=researcher, checkpointer=MemorySaver(), handoff_on_auth=True,
+    )
+
+    config = cast(RunnableConfig, {"configurable": {"thread_id": "auth_handoff_immediate"}})
+
+    async for _ in graph.astream(_initial_state("등본 발급"), config):
+        pass
+    state1 = await graph.aget_state(config)
+    assert state1.next == ("plan_approval",)
+
+    async for _ in graph.astream(Command(resume={"approved": True}), config):
+        pass
+
+    planner.replan.assert_not_awaited()
+
+    state2 = await graph.aget_state(config)
+    assert state2.next == ("human_gateway",)
+
+    payload = state2.tasks[0].interrupts[0].value
+    assert payload["type"] == "auth_required"
+
+
+@pytest.mark.asyncio
+async def test_auth_handoff_disabled_falls_through_to_retry():
+    researcher = MagicMock()
+    researcher.research = AsyncMock(return_value=None)
+
+    scout = MagicMock()
+    scout.scout = AsyncMock(return_value=RouteMap(steps=[], final_url="https://gov.kr", scout_summary="정부24"))
+
+    page_state = PageState(url="https://gov.kr/auth", title="본인인증", dom_text="인증 필요")
+    initial_plan = Plan(
+        anchor="등본 발급", anchor_rationale="발급 흐름",
+        tasks=[Task(description="등본 신청", success_criteria=SuccessCriteria(text_visible="신청"))],
+    )
+    replanned = Plan(
+        anchor="등본 발급", anchor_rationale="재시도",
+        tasks=[Task(description="다른 방법 시도")],
+    )
+
+    planner = MagicMock()
+    planner.create_plan = AsyncMock(return_value=initial_plan)
+    planner.next_tasks = AsyncMock()
+    planner.replan = AsyncMock(return_value=replanned)
+
+    actor = MagicMock()
+    actor.execute_task = AsyncMock(
+        return_value=StepResult(success=False, message="AUTH_REQUIRED: 본인인증 필요", page_state=page_state)
+    )
+
+    evaluator = MagicMock()
+    evaluator.evaluate = AsyncMock(return_value=EvalResult(success=False, reason="인증 페이지"))
+
+    graph = compile_graph(
+        scout=scout, planner=planner, actor=actor, evaluator=evaluator,
+        researcher=researcher, checkpointer=MemorySaver(), handoff_on_auth=False,
+    )
+
+    config = cast(RunnableConfig, {"configurable": {"thread_id": "auth_handoff_disabled"}})
+
+    async for _ in graph.astream(_initial_state("등본 발급"), config):
+        pass
+
+    async for _ in graph.astream(Command(resume={"approved": True}), config):
+        pass
+
+    planner.replan.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_auth_resume_clears_stale_state_and_retries_task():
+    researcher = MagicMock()
+    researcher.research = AsyncMock(return_value=None)
+
+    scout = MagicMock()
+    scout.scout = AsyncMock(return_value=RouteMap(steps=[], final_url="https://gov.kr", scout_summary="정부24"))
+
+    auth_page = PageState(url="https://gov.kr/auth", title="본인인증", dom_text="인증 필요")
+    success_page = PageState(url="https://gov.kr/done", title="신청완료", dom_text="신청 완료")
+
+    initial_plan = Plan(
+        anchor="등본 발급", anchor_rationale="발급 흐름",
+        tasks=[Task(description="등본 신청", success_criteria=SuccessCriteria(text_visible="신청"))],
+    )
+
+    planner = MagicMock()
+    planner.create_plan = AsyncMock(return_value=initial_plan)
+    planner.next_tasks = AsyncMock()
+    planner.replan = AsyncMock()
+
+    call_count = 0
+
+    async def actor_side_effect(task):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return StepResult(success=False, message="AUTH_REQUIRED: 본인인증 필요", page_state=auth_page)
+        return StepResult(success=True, message="신청 완료", page_state=success_page)
+
+    actor = MagicMock()
+    actor.execute_task = AsyncMock(side_effect=actor_side_effect)
+
+    evaluator = MagicMock()
+    evaluator.evaluate = AsyncMock(
+        side_effect=[
+            EvalResult(success=False, reason="인증 페이지"),
+            EvalResult(success=True, reason="신청 완료"),
+        ]
+    )
+
+    graph = compile_graph(
+        scout=scout, planner=planner, actor=actor, evaluator=evaluator,
+        researcher=researcher, checkpointer=MemorySaver(), handoff_on_auth=True,
+    )
+
+    config = cast(RunnableConfig, {"configurable": {"thread_id": "auth_resume_clear"}})
+
+    async for _ in graph.astream(_initial_state("등본 발급"), config):
+        pass
+    async for _ in graph.astream(Command(resume={"approved": True}), config):
+        pass
+
+    state_at_gateway = await graph.aget_state(config)
+    assert state_at_gateway.next == ("human_gateway",)
+
+    async for _ in graph.astream(Command(resume={"approved": True}), config):
+        pass
+
+    planner.replan.assert_not_awaited()
+    assert call_count == 2
+
+    state_final = await graph.aget_state(config)
+    assert state_final.values.get("auth_required") is False
+    assert state_final.values.get("error") is None

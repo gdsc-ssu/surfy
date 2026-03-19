@@ -348,6 +348,45 @@ langgraph dev
 - `LANGSMITH_TRACING=true`가 없으면 트레이싱 비활성 (성능 영향 없음)
 - Studio는 로컬 개발용 — 프로덕션에서는 LangSmith 대시보드 사용
 
+## E2E 수동 테스트 시나리오
+
+코드 변경 후 아래 시나리오를 직접 실행하여 검증한다. `make chrome && make restart`로 환경을 준비한 뒤 Extension 또는 CLI로 테스트한다.
+
+### 시나리오 1: 반복 실행 방지 (#60)
+
+1. Extension에서 "SRT 예매 페이지에서 내일 서울→부산 검색해줘" 입력
+2. Plan 승인
+3. **기대**: Actor가 동일 페이지에서 같은 액션을 3회 이상 반복하지 않고, STUCK으로 빠져나온다
+4. **실패 징후**: 동일 클릭/입력이 5회 이상 반복, 사이트에서 매크로 차단 메시지 표시
+
+### 시나리오 2: 로그인 시 임의 입력 방지 (#61)
+
+1. Extension에서 "정부24에서 주민등록등본 발급해줘" 입력
+2. Plan 승인 → Scout/Actor가 정부24 접속
+3. **기대**: 로그인/본인인증 페이지에서 임의 아이디/비밀번호를 입력하지 않고, `AUTH_REQUIRED` interrupt가 발생하여 사용자에게 턴이 넘어온다
+4. **실패 징후**: 에이전트가 "test123" 같은 가짜 계정으로 로그인 시도, 회원가입 폼에 임의 정보 입력
+
+### 시나리오 3: Auth Handoff → Resume (#61 + Auth Handoff)
+
+1. 시나리오 2에서 `AUTH_REQUIRED` interrupt 수신 확인
+2. 브라우저에서 직접 본인인증 완료
+3. Extension에서 "계속 진행" 클릭
+4. **기대**: Actor가 인증 완료된 상태에서 다음 태스크를 이어서 수행 (replan 없이)
+5. **실패 징후**: resume 후 다시 로그인 페이지로 돌아감, planner가 불필요한 replan 수행
+
+### 시나리오 4: Replan 시 같은 실패 반복 방지 (#62)
+
+1. Extension에서 복잡한 예약 태스크 입력 (예: "코레일에서 내일 광명→계룡 기차 검색")
+2. Plan 승인 → Actor 실행 → 첫 번째 태스크 실패
+3. **기대**: Planner가 이전과 다른 접근 방식으로 replan, 새 plan에 대해 다시 approval interrupt 발생
+4. **실패 징후**: 동일한 태스크 설명이 반복, approval 없이 replan된 태스크가 바로 실행
+
+### 시나리오 5: Scout 정찰 전용 규칙
+
+1. Extension에서 "네이버 카페에서 인기글 확인해줘" 입력
+2. **기대**: Scout가 네이버 카페를 탐색하되, 로그인 폼에 정보를 입력하지 않고 경로만 기록
+3. **실패 징후**: Scout가 로그인 시도, 회원가입 페이지 진입, 개인정보 입력
+
 ## Behavioral Rules
 
 - State assumptions explicitly before implementing. If unclear, ask.

@@ -107,6 +107,35 @@ async def test_loop_detection_stuck():
 
 
 @pytest.mark.asyncio
+async def test_loop_detection_returns_page_state():
+    """#60 재현: loop 감지 시 page_state가 반환되어 evaluator가 실제 상태로 평가 가능."""
+    browser = MockBrowser(same_state=True)
+    llm = MockLLM()
+    actor = ActorService(browser=browser, llm=llm)
+
+    result = await actor.execute_task(Task(description="Test"), max_steps=10)
+
+    assert result.success is False
+    assert result.page_state is not None
+    assert result.page_state.url == "https://example.com"
+
+
+@pytest.mark.asyncio
+async def test_max_steps_returns_page_state():
+    """#62 재현: max_steps 도달 시 page_state가 반환되어 evaluator가 None이 아닌 실제 상태로 평가."""
+    browser = MockBrowser(same_state=False)
+    llm = MockLLM()
+    actor = ActorService(browser=browser, llm=llm)
+
+    result = await actor.execute_task(Task(description="Test"), max_steps=3)
+
+    assert result.success is False
+    assert "Max steps" in result.message
+    assert result.page_state is not None
+    assert "example.com" in result.page_state.url
+
+
+@pytest.mark.asyncio
 async def test_force_done_nudge_remaining_2():
     """남은 스텝이 2개일 때 nudge 메시지가 추가되는지 확인."""
     browser = MockBrowser(same_state=False)  # 루프 방지

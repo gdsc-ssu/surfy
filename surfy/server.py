@@ -233,6 +233,7 @@ def _initial_state(command: str) -> AgentState:
         "last_page_state": None,
         "plan_approved": False,
         "user_feedback": None,
+        "auth_required": False,
         "done": False,
         "error": None,
     }
@@ -338,7 +339,9 @@ async def _get_or_create_runtime() -> ServerRuntime:
         else:
             raise RuntimeError("Either GOOGLE_API_KEY or ANTHROPIC_API_KEY must be set")
 
-        llm = LangChainLLMAdapter(model=chat_model, use_vision=settings.llm.use_vision)
+        llm = LangChainLLMAdapter(
+            model=chat_model, use_vision=settings.llm.use_vision, handoff_on_auth=settings.handoff_on_auth
+        )
 
         agent_adapter = BrowserUseAgentAdapter(session=shared_session, llm=scout_llm)
         researcher = ResearcherService(research_port=DdgsSearchAdapter())
@@ -355,6 +358,7 @@ async def _get_or_create_runtime() -> ServerRuntime:
             researcher=researcher,
             checkpointer=MemorySaver(),
             scout_max_steps=settings.scout.max_steps,
+            handoff_on_auth=settings.handoff_on_auth,
         )
 
         langfuse_handler = create_langfuse_handler()
