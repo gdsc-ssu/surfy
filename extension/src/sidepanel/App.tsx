@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { AppState, Action, ServerMessage } from "./types";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { ProgressBar } from "./components/ProgressBar";
@@ -397,6 +397,18 @@ function reducer(state: AppState, action: Action): AppState {
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [autoApprove, setAutoApprove] = useState(() => localStorage.getItem("surfy_auto_approve") === "true");
+
+  const autoApproveRef = useRef(autoApprove);
+  useEffect(() => { autoApproveRef.current = autoApprove; }, [autoApprove]);
+
+  const toggleAutoApprove = () => {
+    setAutoApprove((prev) => {
+      const next = !prev;
+      localStorage.setItem("surfy_auto_approve", String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     const handleMessage = (message: ServerMessage) => {
@@ -420,6 +432,22 @@ export default function App() {
           break;
         case "interrupt":
           dispatch({ type: "INTERRUPT", data: message.data });
+          if (autoApproveRef.current && message.data?.interrupt_type !== "human_gateway") {
+            setTimeout(() => {
+              chrome.runtime.sendMessage({
+                source: "sidepanel",
+                payload: {
+                  type: "resume",
+                  data: {
+                    interrupt_type: message.data?.interrupt_type,
+                    value: { approved: true, modification: null },
+                  },
+                },
+              });
+              dispatch({ type: "INTERRUPT_RESOLVED" });
+              dispatch({ type: "CHAT_MESSAGE", sender: "system", text: "Auto-approved" });
+            }, 300);
+          }
           break;
         case "cancelled":
           dispatch({ type: "CANCELLED" });
@@ -523,6 +551,17 @@ export default function App() {
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <h1 className="text-xl font-bold text-blue-600">Surfy</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleAutoApprove}
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              autoApprove
+                ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            }`}
+            title={autoApprove ? "Auto-approve ON — 플랜 자동 승인" : "Auto-approve OFF — 수동 승인"}
+          >
+            {autoApprove ? "⚡ Auto" : "✋ Manual"}
+          </button>
           {(state.done || state.error || state.activityLog.length > 0) && !state.running && (
             <button
               onClick={handleClear}
