@@ -19,7 +19,14 @@ from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
 from surfy.adapters.cache import JsonFileCacheAdapter
 from surfy.adapters.llm import LangChainLLMAdapter
 from surfy.adapters.research import DdgsSearchAdapter
-from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ResearcherService, ScoutService
+from surfy.domain.services import (
+    ActorService,
+    EvaluatorService,
+    PlannerService,
+    ReporterService,
+    ResearcherService,
+    ScoutService,
+)
 from surfy.graph import compile_graph
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -47,12 +54,14 @@ def _make_graph():
     actor = ActorService(browser=browser, llm=llm)
     scout = ScoutService(scout=agent_adapter)
     evaluator = EvaluatorService(browser=browser, llm=llm)
+    reporter = ReporterService(llm=llm)
 
     return compile_graph(
         scout=scout,
         planner=planner,
         actor=actor,
         evaluator=evaluator,
+        reporter=reporter,
         researcher=researcher,
         cache=JsonFileCacheAdapter(),
     )

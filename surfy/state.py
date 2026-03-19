@@ -1,5 +1,5 @@
 import operator
-from typing import Annotated, TypedDict
+from typing import Annotated, NotRequired, TypedDict
 
 from surfy.domain.models import EvalResult, HistoryEntry, PageState, RouteMap, Task
 from surfy.domain.models.plan import Plan
@@ -20,6 +20,7 @@ class AgentState(TypedDict):
     plan_approved: bool
     user_feedback: str | None
     research_result: ResearchResult | None
+    report_result: NotRequired[str | None]
     auth_required: bool
     post_auth: bool
     done: bool
