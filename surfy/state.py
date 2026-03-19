@@ -20,5 +20,6 @@ class AgentState(TypedDict):
     plan_approved: bool
     user_feedback: str | None
     research_result: ResearchResult | None
+    auth_required: bool
     done: bool
     error: str | None

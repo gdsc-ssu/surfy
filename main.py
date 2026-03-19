@@ -60,7 +60,9 @@ async def run(command: str) -> AgentState:
     else:
         raise RuntimeError("Either GOOGLE_API_KEY or ANTHROPIC_API_KEY must be set")
 
-    llm = LangChainLLMAdapter(model=chat_model, use_vision=settings.llm.use_vision)
+    llm = LangChainLLMAdapter(
+        model=chat_model, use_vision=settings.llm.use_vision, handoff_on_auth=settings.handoff_on_auth
+    )
 
     agent_adapter = BrowserUseAgentAdapter(session=shared_session, llm=agent_llm)
     researcher = ResearcherService(research_port=DdgsSearchAdapter())
@@ -78,6 +80,7 @@ async def run(command: str) -> AgentState:
         evaluator=evaluator,
         researcher=researcher,
         checkpointer=checkpointer,
+        handoff_on_auth=settings.handoff_on_auth,
     )
 
     initial_state: AgentState = {
@@ -94,6 +97,7 @@ async def run(command: str) -> AgentState:
         "last_page_state": None,
         "plan_approved": False,
         "user_feedback": None,
+        "auth_required": False,
         "done": False,
         "error": None,
     }
@@ -128,6 +132,17 @@ async def run(command: str) -> AgentState:
                     logger.info("=" * 57 + "\n")
 
                     ans = input("승인하시겠습니까? (y/n): ").strip().lower()
+                    input_payload = Command(resume={"approved": ans == "y"})
+
+                elif interrupt_type == "auth_required":
+                    failed_task = payload.get("failed_task")
+                    reason = payload.get("reason")
+                    logger.info("\n" + "=" * 20 + " [AUTH REQUIRED] " + "=" * 20)
+                    logger.info("Task: %s", failed_task)
+                    logger.info("Reason: %s", reason)
+                    logger.info("=" * 57 + "\n")
+
+                    ans = input("인증을 완료했습니까? (y/n): ").strip().lower()
                     input_payload = Command(resume={"approved": ans == "y"})
 
                 elif interrupt_type == "human_gateway":

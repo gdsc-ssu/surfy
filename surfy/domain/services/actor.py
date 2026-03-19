@@ -19,16 +19,20 @@ class ActorService:
     async def execute_task(self, task: Task, max_steps: int = 15) -> StepResult:
         history: list[HistoryEntry] = []
         fingerprints: list[str] = []
+        last_page_state: PageState | None = None
 
         for step in range(max_steps):
             page_state = await self._browser.get_page_state()
+            last_page_state = page_state
 
             fp = _page_fingerprint(page_state)
             fingerprints.append(fp)
 
             if len(fingerprints) >= 5 and len(set(fingerprints[-5:])) == 1:
                 logger.warning("Loop detected: 5 identical page states. Forcing STUCK.")
-                return StepResult(success=False, message="Loop detected: stuck on same page")
+                return StepResult(
+                    success=False, message="Loop detected: stuck on same page", page_state=page_state
+                )
 
             if len(fingerprints) >= 3 and len(set(fingerprints[-3:])) == 1:
                 task = Task(
@@ -84,4 +88,5 @@ class ActorService:
         return StepResult(
             success=False,
             message=f"Max steps ({max_steps}) reached without completing task",
+            page_state=last_page_state,
         )

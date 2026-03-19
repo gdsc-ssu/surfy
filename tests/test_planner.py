@@ -114,6 +114,50 @@ async def test_replan_preserves_anchor():
 
 
 @pytest.mark.asyncio
+async def test_replan_includes_completed_tasks_context():
+    """#62 재현: replan 시 completed_tasks가 progress에 포함되어 중복 방지."""
+    llm = MockLLM()
+    planner = PlannerService(llm)
+
+    original_plan = Plan(
+        anchor="SRT 예약",
+        tasks=[Task(description="출발역 선택")],
+        anchor_rationale="예약 흐름",
+    )
+    completed = [Task(description="SRT 홈페이지 접속"), Task(description="예매 탭 클릭")]
+
+    await planner.replan(
+        original_plan, Task(description="출발역 선택"), "요소를 찾을 수 없음", completed_tasks=completed
+    )
+
+    progress_sent = llm.plan_calls[-1][1]
+    assert "SRT 홈페이지 접속" in progress_sent
+    assert "예매 탭 클릭" in progress_sent
+    assert "출발역 선택" in progress_sent
+    assert "요소를 찾을 수 없음" in progress_sent
+
+
+@pytest.mark.asyncio
+async def test_replan_without_completed_tasks_still_works():
+    """completed_tasks=None 시 기존 동작과 동일."""
+    llm = MockLLM()
+    planner = PlannerService(llm)
+
+    original_plan = Plan(
+        anchor="검색",
+        tasks=[Task(description="실패 태스크")],
+        anchor_rationale="이유",
+    )
+
+    await planner.replan(original_plan, Task(description="실패 태스크"), "타임아웃")
+
+    progress_sent = llm.plan_calls[-1][1]
+    assert "실패 태스크" in progress_sent
+    assert "타임아웃" in progress_sent
+    assert "완료된 태스크" not in progress_sent
+
+
+@pytest.mark.asyncio
 async def test_summarize_progress_empty():
     """완료된 태스크가 없으면 빈 문자열."""
     llm = MockLLM()
