@@ -16,7 +16,7 @@ test:
 check: lint typecheck test
 
 serve:
-	uv run python main.py --serve --port 8765
+	doppler run -- uv run python main.py --serve --port 8765
 
 stop:
 	@lsof -ti:8765 2>/dev/null | xargs kill -9 2>/dev/null; echo "Stopped surfy server"
@@ -24,7 +24,7 @@ stop:
 restart: stop
 	@sleep 1
 	@echo "Starting surfy server..."
-	@uv run python main.py --serve --port 8765 &
+	@doppler run -- uv run python main.py --serve --port 8765 &
 	@sleep 2
 	@lsof -i :8765 >/dev/null 2>&1 && echo "Surfy server running on :8765" || echo "Failed to start server"
 
