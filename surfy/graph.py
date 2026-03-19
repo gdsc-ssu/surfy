@@ -46,6 +46,7 @@ def compile_graph(
     researcher: ResearcherService | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
     scout_max_steps: int = 20,
+    handoff_on_auth: bool = True,
 ) -> CompiledStateGraph:
     async def research_node(state: AgentState) -> dict[str, object]:
         if _is_simple_navigation_command(state["command"]):
@@ -77,7 +78,9 @@ def compile_graph(
         user_feedback = state.get("user_feedback")
         if user_feedback and plan is not None:
             failed_task = plan.tasks[0] if plan.tasks else Task(description="")
-            replanned = await planner.replan(plan, failed_task, user_feedback)
+            replanned = await planner.replan(
+                plan, failed_task, user_feedback, completed_tasks=list(state["completed_tasks"])
+            )
             replanned.anchor = plan.anchor
             if not replanned.tasks:
                 return {
@@ -122,10 +125,18 @@ def compile_graph(
             failed_task = _current_task(state)
             if failed_task is None:
                 return {"done": True, "error": eval_result.reason}
-            replanned = await planner.replan(plan, failed_task, eval_result.reason)
+            replanned = await planner.replan(
+                plan, failed_task, eval_result.reason, completed_tasks=list(state["completed_tasks"])
+            )
             if not replanned.tasks:
                 return {"plan": replanned, "done": True, "retry_count": 0, "current_task_idx": 0, "eval_result": None}
-            return {"plan": replanned, "current_task_idx": 0, "eval_result": None, "error": None}
+            return {
+                "plan": replanned,
+                "current_task_idx": 0,
+                "eval_result": None,
+                "error": None,
+                "plan_approved": False,
+            }
 
         if state["current_task_idx"] >= len(plan.tasks):
             next_plan = await planner.next_tasks(plan, state["completed_tasks"])
@@ -161,10 +172,13 @@ def compile_graph(
         summary_action = ActorOutput(thinking=task.description, action_type=action_type, value=result.message)
         history_entry = HistoryEntry(action=summary_action, result=result, step=None)
 
+        is_auth = not result.success and result.message is not None and "AUTH_REQUIRED" in result.message
+
         return {
             "history": [history_entry],
             "last_page_state": result.page_state,
             "error": None if result.success else result.message,
+            "auth_required": is_auth,
         }
 
     async def evaluator_node(state: AgentState) -> dict[str, object]:
@@ -217,9 +231,11 @@ def compile_graph(
     def human_gateway_node(state: AgentState) -> dict[str, object]:
         eval_result = state.get("eval_result")
         failed_task = _current_task(state)
+        is_auth = state.get("auth_required", False)
+        interrupt_type = "auth_required" if is_auth else "human_gateway"
         result = interrupt(
             {
-                "type": "human_gateway",
+                "type": interrupt_type,
                 "failed_task": failed_task.description if failed_task else "unknown",
                 "reason": eval_result.reason if eval_result else "unknown",
                 "retry_count": state["retry_count"],
@@ -227,6 +243,8 @@ def compile_graph(
         )
         if not result.get("approved"):
             return {"done": True}
+        if is_auth:
+            return {"retry_count": 0, "eval_result": None, "auth_required": False, "error": None}
         return {"retry_count": 0}
 
     def completion_check_node(state: AgentState) -> dict[str, object]:
@@ -282,6 +300,9 @@ def compile_graph(
             if task is not None:
                 return "actor"
             return "completion_check"
+
+        if state.get("auth_required") and handoff_on_auth:
+            return "human_gateway"
 
         if state["retry_count"] <= state["max_retries"]:
             return "planner"

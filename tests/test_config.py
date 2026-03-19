@@ -51,7 +51,18 @@ def test_settings_google_api_key_optional():
         settings = Settings(_env_file=None)
         assert settings.google_api_key is None
 
-    # 환경 변수로 설정 가능한지 확인
     with mock.patch.dict(os.environ, {"GOOGLE_API_KEY": "google-test-key"}, clear=True):
         settings = Settings(_env_file=None)
         assert settings.google_api_key == "google-test-key"
+
+
+def test_settings_handoff_on_auth_defaults_true():
+    with mock.patch.dict(os.environ, {}, clear=True):
+        settings = Settings(_env_file=None)
+        assert settings.handoff_on_auth is True
+
+
+def test_settings_handoff_on_auth_env_override():
+    with mock.patch.dict(os.environ, {"HANDOFF_ON_AUTH": "false"}, clear=True):
+        settings = Settings(_env_file=None)
+        assert settings.handoff_on_auth is False

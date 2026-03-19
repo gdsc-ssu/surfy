@@ -497,6 +497,7 @@ async def test_runtime_partial_creation_cleans_up_browser(reset_server_state, mo
                 "scout": type("SC", (), {"model_name": "test", "max_steps": 20})(),
                 "google_api_key": None,
                 "anthropic_api_key": "test-key",
+                "handoff_on_auth": True,
             },
         )(),
     )
