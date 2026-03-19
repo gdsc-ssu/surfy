@@ -11,7 +11,7 @@ export const ActivityBlock: React.FC<ActivityBlockProps> = ({ activityData }) =>
 
   return (
     <div
-      className={`flex flex-col gap-1 px-3 py-2 rounded-md text-sm border ${
+      className={`flex flex-col gap-1 px-3 py-2 rounded-md text-sm border overflow-hidden ${
         activityData.status === "running" ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"
       }`}
       data-testid="activity-block"
@@ -43,13 +43,13 @@ export const ActivityBlock: React.FC<ActivityBlockProps> = ({ activityData }) =>
 
       {expanded && (
         <div className="ml-6 flex flex-col gap-1">
-          {activityData.detail && <p className="text-xs text-gray-600">{activityData.detail}</p>}
+          {activityData.detail && <p className="text-xs text-gray-600 break-words">{activityData.detail}</p>}
           {activityData.subSteps && activityData.subSteps.length > 0 && (
             <div className="flex flex-col gap-0.5 mt-0.5">
               {activityData.subSteps.map((step, index) => (
-                <div key={index} className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <span className="text-gray-400">↳</span>
-                  <span>{step.description}</span>
+                <div key={index} className="flex items-start gap-1.5 text-xs text-gray-500 min-w-0">
+                  <span className="text-gray-400 flex-shrink-0">↳</span>
+                  <span className="break-words min-w-0">{step.description}</span>
                 </div>
               ))}
             </div>
