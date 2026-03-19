@@ -201,10 +201,17 @@ def compile_graph(
             eval_result = await evaluator.evaluate(task, page_state)
 
         if eval_result.success:
-            if page_state is None:
-                result_text = "완료"
-            else:
+            actor_message = ""
+            if state["history"]:
+                last_entry = state["history"][-1]
+                if last_entry.result and last_entry.result.message:
+                    actor_message = last_entry.result.message
+            if actor_message and actor_message != "Task completed":
+                result_text = actor_message
+            elif page_state is not None:
                 result_text = f"[{page_state.title}] {page_state.url}"
+            else:
+                result_text = "완료"
             task = task.model_copy(update={"result": result_text})
             return {
                 "eval_result": eval_result,

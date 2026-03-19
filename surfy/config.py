@@ -24,7 +24,7 @@ class ScoutSettings(BaseSettings):
     model_name: str = "gemini-3-flash-preview"
     use_vision: bool = False
     flash_mode: bool = True
-    max_steps: int = 5
+    max_steps: int = 15
 
 
 class LangfuseSettings(BaseSettings):
