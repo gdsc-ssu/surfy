@@ -374,6 +374,15 @@ def compile_graph(
             return {"report_result": None}
         command = state["command"]
         completed_tasks = list(state["completed_tasks"])
+
+        if not completed_tasks:
+            route_map = state.get("route_map")
+            scout_summary = (route_map.scout_summary if route_map else "") or ""
+            research_result = state.get("research_result") or ""
+            context = scout_summary or research_result
+            if context:
+                completed_tasks = [Task(description="수집된 정보", result=context)]
+
         try:
             report_text = await reporter.report(command, completed_tasks)
             return {"report_result": report_text}
@@ -386,9 +395,9 @@ def compile_graph(
             return "report"
         return "planner"
 
-    def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "END"]:
+    def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "cache_store", "END"]:
         if state["done"]:
-            return "END"
+            return "cache_store"
         task = _current_task(state)
         if task is None:
             return "END"
@@ -396,18 +405,18 @@ def compile_graph(
             return "plan_approval"
         return "actor"
 
-    def route_after_approval(state: AgentState) -> Literal["actor", "planner", "END"]:
+    def route_after_approval(state: AgentState) -> Literal["actor", "planner", "cache_store", "END"]:
         if state["done"]:
-            return "END"
+            return "cache_store"
         if state.get("user_feedback"):
             return "planner"
         return "actor"
 
     def route_after_evaluator(
         state: AgentState,
-    ) -> Literal["planner", "actor", "human_gateway", "completion_check", "END"]:
+    ) -> Literal["planner", "actor", "human_gateway", "completion_check", "cache_store", "END"]:
         if state["done"]:
-            return "END"
+            return "cache_store"
 
         eval_result = state["eval_result"]
         if eval_result is None:
@@ -426,9 +435,9 @@ def compile_graph(
             return "planner"
         return "human_gateway"
 
-    def route_after_human(state: AgentState) -> Literal["planner", "END"]:
+    def route_after_human(state: AgentState) -> Literal["planner", "cache_store", "END"]:
         if state["done"]:
-            return "END"
+            return "cache_store"
         return "planner"
 
     def route_after_completion(state: AgentState) -> Literal["planner", "cache_store"]:
@@ -472,6 +481,7 @@ def compile_graph(
         {
             "plan_approval": "plan_approval",
             "actor": "actor",
+            "cache_store": "cache_store",
             "END": END,
         },
     )
@@ -481,6 +491,7 @@ def compile_graph(
         {
             "actor": "actor",
             "planner": "planner",
+            "cache_store": "cache_store",
             "END": END,
         },
     )
@@ -493,6 +504,7 @@ def compile_graph(
             "actor": "actor",
             "human_gateway": "human_gateway",
             "completion_check": "completion_check",
+            "cache_store": "cache_store",
             "END": END,
         },
     )
@@ -501,6 +513,7 @@ def compile_graph(
         route_after_human,
         {
             "planner": "planner",
+            "cache_store": "cache_store",
             "END": END,
         },
     )
