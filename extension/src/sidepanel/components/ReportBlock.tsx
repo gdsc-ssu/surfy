@@ -1,4 +1,5 @@
 import React from "react";
+import Markdown from "react-markdown";
 import { ChatMessage } from "../types";
 
 interface ReportBlockProps {
@@ -11,8 +12,10 @@ export const ReportBlock: React.FC<ReportBlockProps> = ({ reportData }) => {
       className="bg-green-50 border border-green-200 rounded-md p-3 flex items-start gap-2"
       data-testid="report-block"
     >
-      <span className="text-green-600 mt-0.5">✅</span>
-      <p className="text-sm text-green-900 whitespace-pre-wrap">{reportData.summary}</p>
+      <span className="text-green-600 mt-0.5 flex-shrink-0">✅</span>
+      <div className="text-sm text-green-900 prose prose-sm prose-green max-w-none [&_a]:text-green-700 [&_a]:underline [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h2]:text-base [&_h2]:mt-2 [&_h2]:mb-1 [&_h3]:text-sm [&_h3]:mt-2 [&_h3]:mb-1 [&_p]:my-1">
+        <Markdown>{reportData.summary}</Markdown>
+      </div>
     </div>
   );
 };
