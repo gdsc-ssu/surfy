@@ -206,15 +206,10 @@ def compile_graph(
             }
 
         if state["current_task_idx"] >= len(plan.tasks):
-            completed = list(state["completed_tasks"])
-            if len(completed) >= 10:
+            if len(state["completed_tasks"]) >= 10:
                 logger.warning("Max completed tasks (10) reached. Finishing.")
                 return {"plan": plan, "done": True, "retry_count": 0, "eval_result": None}
-            has_results = any(t.result and t.result != "완료" for t in completed)
-            if has_results and len(completed) >= 2:
-                logger.info("Tasks have meaningful results. Finishing without asking planner for more.")
-                return {"plan": plan, "done": True, "retry_count": 0, "eval_result": None}
-            next_plan = await planner.next_tasks(plan, completed)
+            next_plan = await planner.next_tasks(plan, state["completed_tasks"])
             if not next_plan.tasks:
                 return {"plan": next_plan, "done": True, "retry_count": 0, "eval_result": None}
             if _is_repeated_plan(next_plan.tasks, state["completed_tasks"]):
