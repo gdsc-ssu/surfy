@@ -307,10 +307,15 @@ function reducer(state: AppState, action: Action): AppState {
         messages: [
           ...state.messages,
           {
+            sender: "user",
+            text: action.command,
+            timestamp,
+          },
+          {
             type: "activity",
             sender: "agent",
             text: "",
-            timestamp,
+            timestamp: timestamp + 1,
             activityData: {
               node: "__loading",
               label: "Starting...",
