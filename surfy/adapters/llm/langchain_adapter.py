@@ -18,6 +18,10 @@ PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
 RECENT_HISTORY_COUNT = 10
 MAX_DOM_TEXT_LENGTH = 5000  # 토큰 제한을 위한 DOM 텍스트 최대 길이
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+AUTH_INSTRUCTION = (
+    "인증/로그인/본인인증 페이지를 만나면 STUCK을 선택하고 "
+    "value를 반드시 'AUTH_REQUIRED: [상황설명]' 형식으로 시작하세요."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +56,10 @@ class LangChainLLMAdapter(LLMPort):
     Planner, Actor, Evaluator 세 가지 역할을 수행한다.
     """
 
-    def __init__(self, *, model: BaseChatModel, use_vision: bool):
+    def __init__(self, *, model: BaseChatModel, use_vision: bool, handoff_on_auth: bool = True):
         self._use_vision = use_vision
         self._model = model
+        self._handoff_on_auth = handoff_on_auth
 
         self._actor_template = _load_prompty("actor")
         self._planner_template = _load_prompty("planner")
@@ -97,6 +102,7 @@ class LangChainLLMAdapter(LLMPort):
             title=page_state.title,
             dom_text=dom_text,
             formatted_history=self._format_history(history),
+            auth_instruction=AUTH_INSTRUCTION if self._handoff_on_auth else "",
         )
 
         messages = [self._build_human_message(prompt, page_state.screenshot if self._use_vision else None)]

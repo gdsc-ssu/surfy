@@ -21,6 +21,7 @@ async def test_decide_action_truncates_dom_text() -> None:
     adapter = _adapter_without_init()
     adapter._actor_template = "DOM: ${dom_text}"
     adapter._use_vision = False
+    adapter._handoff_on_auth = True
     adapter._format_history = MagicMock(return_value="")
 
     # Mock _actor_model.ainvoke
@@ -47,6 +48,58 @@ async def test_decide_action_truncates_dom_text() -> None:
 
     expected_dom = long_dom[:MAX_DOM_TEXT_LENGTH] + "\n... (truncated)"
     assert f"DOM: {expected_dom}" == prompt
+
+
+@pytest.mark.asyncio
+async def test_decide_action_includes_auth_instruction_when_enabled() -> None:
+    adapter = _adapter_without_init()
+    adapter._actor_template = "TASK: ${task_description} AUTH: ${auth_instruction}"
+    adapter._use_vision = False
+    adapter._handoff_on_auth = True
+    adapter._format_history = MagicMock(return_value="")
+
+    mock_model = MagicMock()
+
+    async def mock_ainvoke(*_):
+        return MagicMock()
+
+    mock_model.ainvoke = MagicMock(side_effect=mock_ainvoke)
+    adapter._model = MagicMock()
+    adapter._model.with_structured_output = MagicMock(return_value=mock_model)
+
+    task = Task(description="test")
+    page_state = PageState(url="http://test.com", title="test", dom_text="dom")
+
+    await adapter.decide_action(task, page_state, [])
+
+    prompt = mock_model.ainvoke.call_args[0][0][0].content
+    assert "AUTH_REQUIRED" in prompt
+
+
+@pytest.mark.asyncio
+async def test_decide_action_omits_auth_instruction_when_disabled() -> None:
+    adapter = _adapter_without_init()
+    adapter._actor_template = "TASK: ${task_description} AUTH: ${auth_instruction}"
+    adapter._use_vision = False
+    adapter._handoff_on_auth = False
+    adapter._format_history = MagicMock(return_value="")
+
+    mock_model = MagicMock()
+
+    async def mock_ainvoke(*_):
+        return MagicMock()
+
+    mock_model.ainvoke = MagicMock(side_effect=mock_ainvoke)
+    adapter._model = MagicMock()
+    adapter._model.with_structured_output = MagicMock(return_value=mock_model)
+
+    task = Task(description="test")
+    page_state = PageState(url="http://test.com", title="test", dom_text="dom")
+
+    await adapter.decide_action(task, page_state, [])
+
+    prompt = mock_model.ainvoke.call_args[0][0][0].content
+    assert "AUTH_REQUIRED" not in prompt
 
 
 def test_build_human_message_without_screenshot_returns_text_only() -> None:

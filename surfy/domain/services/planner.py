@@ -75,20 +75,25 @@ class PlannerService:
         new_plan.anchor = plan.anchor
         return new_plan
 
-    async def replan(self, plan: Plan, failed_task: Task, reason: str) -> Plan:
+    async def replan(
+        self, plan: Plan, failed_task: Task, reason: str, completed_tasks: list[Task] | None = None
+    ) -> Plan:
         """Replan: 실패 구간만 재계획, anchor와 성공한 태스크 보존.
 
         Args:
             plan: 현재 계획 (anchor 포함)
             failed_task: 실패한 태스크
             reason: 실패 이유
+            completed_tasks: 이미 완료된 태스크 목록 (중복 방지용)
 
         Returns:
             Plan: anchor는 유지, 재계획된 tasks가 포함된 계획
         """
         progress = f"실패한 태스크: {failed_task.description}\n사유: {reason}"
+        if completed_tasks:
+            completed_summary = self._summarize_progress(completed_tasks)
+            progress = f"{completed_summary}\n\n{progress}"
         new_plan = await self._llm.plan(plan.anchor, progress, route_observations="")
-        # anchor는 절대 변경 안 됨
         new_plan.anchor = plan.anchor
         return new_plan
 

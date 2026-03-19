@@ -63,6 +63,12 @@ Each task must have:
 - Use the same language as the user command
 - Be specific about what to click, type, or navigate to
 
+## Replan Rules (progress에 "실패한 태스크"가 있을 때)
+- 이전에 실패한 접근 방식을 그대로 반복하지 마세요. 반드시 다른 전략을 선택하세요.
+- 실패 사유가 "로그인 필요"이면 로그인 없이 가능한 대안 경로를 찾거나, tasks를 비워서 사용자에게 안내하세요.
+- 실패 사유가 "Loop detected" 또는 반복 관련이면 완전히 다른 네비게이션 경로를 시도하세요.
+- 동일 URL에서 3회 이상 실패한 태스크는 해당 URL을 회피하는 계획을 세우세요.
+
 User command: {{command}}
 
 Progress so far: {{progress}}

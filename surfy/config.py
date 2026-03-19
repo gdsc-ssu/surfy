@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = Field(default=None, repr=False)  # 로그/repr에서 숨김
     google_api_key: str | None = None
 
+    handoff_on_auth: bool = True
+
     llm: LLMSettings = Field(default_factory=LLMSettings)
     browser: BrowserSettings = Field(default_factory=BrowserSettings)
     scout: ScoutSettings = Field(default_factory=ScoutSettings)
