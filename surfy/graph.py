@@ -377,10 +377,11 @@ def compile_graph(
         anchor = plan.anchor if plan else "작업"
         completed_count = len(state["completed_tasks"])
 
-        if llm is not None and state.get("last_page_state") is not None:
+        last_page_state = state.get("last_page_state")
+        if llm is not None and last_page_state is not None:
             eval_result = await llm.evaluate(
                 SuccessCriteria(description=anchor),
-                state["last_page_state"],
+                last_page_state,
             )
             if not eval_result.success:
                 logger.info("completion_check: anchor not achieved (%s), routing to planner", eval_result.reason)
