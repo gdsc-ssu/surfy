@@ -37,7 +37,7 @@ export interface StateUpdateData {
 }
 
 export interface InterruptData {
-  interrupt_type: "plan_approval" | "human_gateway" | "completion_check";
+  interrupt_type: "plan_approval" | "human_gateway" | "completion_check" | "auth_verify_failed";
   payload: Record<string, any>;
 }
 

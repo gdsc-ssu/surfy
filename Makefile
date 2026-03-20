@@ -37,7 +37,7 @@ restart: stop
 	@sleep 1
 	@echo "Starting surfy server..."
 	@curl -sf http://localhost:3000/api/public/health >/dev/null 2>&1 || echo "⚠️  Langfuse not running. Run 'make langfuse' first for tracing."
-	@$(if $(shell command -v doppler 2>/dev/null),doppler run -- uv run python main.py --serve --port 8765,uv run --env-file .env python main.py --serve --port 8765) &
+	@$(_RUN) uv run python main.py --serve --port 8765 &
 	@sleep 2
 	@lsof -i :8765 >/dev/null 2>&1 && echo "Surfy server running on :8765" || echo "Failed to start server"
 

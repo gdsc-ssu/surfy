@@ -7,8 +7,9 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
-from surfy.domain.models import ActionType, ActorOutput, EvalResult, HistoryEntry, RouteMap, SuccessCriteria, Task
+from surfy.domain.models import ActionType, ActorOutput, EvalResult, HistoryEntry, RouteMap, Task
 from surfy.domain.models.research import ResearchResult
+from surfy.domain.ports.browser import BrowserPort
 from surfy.domain.ports.cache import CachePort
 from surfy.domain.ports.llm import LLMPort
 from surfy.domain.services import (
@@ -61,6 +62,7 @@ def compile_graph(
     planner: PlannerService,
     actor: ActorService,
     evaluator: EvaluatorService,
+    browser: BrowserPort | None = None,
     reporter: ReporterService | None = None,
     researcher: ResearcherService | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
@@ -349,9 +351,9 @@ def compile_graph(
         )
         if not result.get("approved"):
             return {"done": True}
-        if is_auth:
+        if is_auth and browser is not None:
             page_before = state.get("last_page_state")
-            page_after = await actor._browser.get_page_state()
+            page_after = await browser.get_page_state()
 
             login_completed = (
                 page_before is None
@@ -376,16 +378,6 @@ def compile_graph(
         plan = state["plan"]
         anchor = plan.anchor if plan else "작업"
         completed_count = len(state["completed_tasks"])
-
-        last_page_state = state.get("last_page_state")
-        if llm is not None and last_page_state is not None:
-            eval_result = await llm.evaluate(
-                SuccessCriteria(description=anchor),
-                last_page_state,
-            )
-            if not eval_result.success:
-                logger.info("completion_check: anchor not achieved (%s), routing to planner", eval_result.reason)
-                return {}
 
         result = interrupt(
             {

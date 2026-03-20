@@ -432,7 +432,7 @@ export default function App() {
           break;
         case "interrupt":
           dispatch({ type: "INTERRUPT", data: message.data });
-          if (autoApproveRef.current && message.data?.interrupt_type !== "human_gateway") {
+          if (autoApproveRef.current && message.data?.interrupt_type !== "human_gateway" && message.data?.interrupt_type !== "auth_verify_failed") {
             setTimeout(() => {
               // completion_check: approved=false means "Complete", approved=true means "Request More"
               const isCompletionCheck = message.data?.interrupt_type === "completion_check";

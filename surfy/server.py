@@ -279,9 +279,11 @@ def _state_update_from(state: dict[str, Any]) -> StateUpdateMessage:
     return StateUpdateMessage(data=data)
 
 
-def _interrupt_type_from(payload: dict[str, Any]) -> Literal["plan_approval", "human_gateway", "completion_check"]:
+def _interrupt_type_from(
+    payload: dict[str, Any],
+) -> Literal["plan_approval", "human_gateway", "completion_check", "auth_verify_failed"]:
     raw = payload.get("type")
-    if raw in {"plan_approval", "human_gateway", "completion_check"}:
+    if raw in {"plan_approval", "human_gateway", "completion_check", "auth_verify_failed"}:
         return raw
     return "human_gateway"
 
@@ -362,7 +364,7 @@ async def _get_or_create_runtime() -> ServerRuntime:
         planner = PlannerService(llm=llm)
         actor = ActorService(browser=browser, llm=llm)
         scout = ScoutService(scout=agent_adapter)
-        evaluator = EvaluatorService(browser=browser, llm=llm)
+        evaluator = EvaluatorService(browser=browser)
         reporter = ReporterService(llm=llm)
 
         compiled_graph = compile_graph(
@@ -370,6 +372,7 @@ async def _get_or_create_runtime() -> ServerRuntime:
             planner=planner,
             actor=actor,
             evaluator=evaluator,
+            browser=browser,
             reporter=reporter,
             researcher=researcher,
             checkpointer=MemorySaver(),
