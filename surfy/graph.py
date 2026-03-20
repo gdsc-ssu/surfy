@@ -9,6 +9,7 @@ from langgraph.types import interrupt
 
 from surfy.domain.models import ActionType, ActorOutput, EvalResult, HistoryEntry, RouteMap, Task
 from surfy.domain.models.research import ResearchResult
+from surfy.domain.ports.browser import BrowserPort
 from surfy.domain.ports.cache import CachePort
 from surfy.domain.ports.llm import LLMPort
 from surfy.domain.services import (
@@ -61,6 +62,7 @@ def compile_graph(
     planner: PlannerService,
     actor: ActorService,
     evaluator: EvaluatorService,
+    browser: BrowserPort | None = None,
     reporter: ReporterService | None = None,
     researcher: ResearcherService | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
@@ -334,7 +336,7 @@ def compile_graph(
             return {"done": True}
         return {"plan_approved": True, "user_feedback": None}
 
-    def human_gateway_node(state: AgentState) -> dict[str, object]:
+    async def human_gateway_node(state: AgentState) -> dict[str, object]:
         eval_result = state.get("eval_result")
         failed_task = _current_task(state)
         is_auth = state.get("auth_required", False)
@@ -349,11 +351,32 @@ def compile_graph(
         )
         if not result.get("approved"):
             return {"done": True}
-        if is_auth:
+        if is_auth and browser is None:
+            logger.warning("browser port not provided — skipping login detection")
+        if is_auth and browser is not None:
+            page_before = state.get("last_page_state")
+            page_after = await browser.get_page_state()
+
+            login_completed = (
+                page_before is None
+                or page_before.url != page_after.url
+                or page_before.dom_text[:500] != page_after.dom_text[:500]
+            )
+
+            if not login_completed:
+                result2 = interrupt(
+                    {
+                        "type": "auth_verify_failed",
+                        "message": "아직 로그인 전과 동일한 페이지입니다. 로그인 완료 후 다시 확인해주세요.",
+                    }
+                )
+                if not result2.get("approved"):
+                    return {"done": True}
+
             return {"retry_count": 0, "eval_result": None, "auth_required": False, "post_auth": True, "error": None}
         return {"retry_count": 0}
 
-    def completion_check_node(state: AgentState) -> dict[str, object]:
+    async def completion_check_node(state: AgentState) -> dict[str, object]:
         plan = state["plan"]
         anchor = plan.anchor if plan else "작업"
         completed_count = len(state["completed_tasks"])

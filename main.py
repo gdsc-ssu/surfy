@@ -72,7 +72,7 @@ async def run(command: str) -> AgentState:
     planner = PlannerService(llm=llm)
     actor = ActorService(browser=browser, llm=llm)
     scout = ScoutService(scout=agent_adapter)
-    evaluator = EvaluatorService(browser=browser, llm=llm)
+    evaluator = EvaluatorService(browser=browser)
 
     checkpointer = MemorySaver()
     compiled_graph = compile_graph(

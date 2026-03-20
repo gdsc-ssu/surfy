@@ -610,6 +610,9 @@ async def test_auth_resume_clears_stale_state_and_retries_task():
     actor = MagicMock()
     actor.execute_task = AsyncMock(side_effect=actor_side_effect)
 
+    browser = MagicMock()
+    browser.get_page_state = AsyncMock(return_value=success_page)
+
     evaluator = MagicMock()
     evaluator.evaluate = AsyncMock(
         side_effect=[
@@ -620,7 +623,7 @@ async def test_auth_resume_clears_stale_state_and_retries_task():
 
     graph = compile_graph(
         scout=scout, planner=planner, actor=actor, evaluator=evaluator,
-        researcher=researcher, checkpointer=MemorySaver(), handoff_on_auth=True,
+        browser=browser, researcher=researcher, checkpointer=MemorySaver(), handoff_on_auth=True,
     )
 
     config = cast(RunnableConfig, {"configurable": {"thread_id": "auth_resume_clear"}})

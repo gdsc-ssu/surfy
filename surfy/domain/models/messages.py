@@ -125,7 +125,7 @@ class StateUpdateMessage(BaseMessage):
 
 
 class InterruptMessageData(BaseModel):
-    interrupt_type: Literal["plan_approval", "human_gateway", "completion_check"]
+    interrupt_type: Literal["plan_approval", "human_gateway", "completion_check", "auth_verify_failed"]
     payload: dict[str, Any]
 
 

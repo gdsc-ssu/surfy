@@ -28,7 +28,7 @@ def test_llm_settings_defaults():
 def test_settings_includes_scout():
     """Settings 클래스에 ScoutSettings가 포함되어 있는지 검증."""
     with mock.patch.dict(os.environ, {}, clear=True):
-        settings = Settings(_env_file=None)
+        settings = Settings(_env_file=None, scout=ScoutSettings(_env_file=None))
         assert isinstance(settings.scout, ScoutSettings)
         assert settings.scout.model_name == "gemini-3-flash-preview"
 

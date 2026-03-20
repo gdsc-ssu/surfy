@@ -127,6 +127,32 @@ export const InterruptBlock: React.FC<InterruptBlockProps> = ({ interruptData, o
     );
   }
 
+  if (interruptData.interrupt_type === "auth_verify_failed") {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-md p-3 flex flex-col gap-3" data-testid="interrupt-block">
+        <h3 className="text-sm font-bold text-red-700">로그인 확인 실패</h3>
+        <p className="text-sm text-red-800">{interruptData.payload.message}</p>
+        <button
+          type="button"
+          onClick={() => onAction({ approved: true })}
+          className="w-full bg-blue-600 text-white py-2.5 rounded-md font-medium"
+          data-testid="retry-button"
+        >
+          <div className="text-sm font-semibold">로그인 완료 — 다시 확인</div>
+          <div className="text-xs opacity-80">로그인을 완료한 후 클릭하세요</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => onAction({ approved: false })}
+          className="w-full bg-gray-600 text-white py-2 rounded-md font-medium text-sm"
+          data-testid="stop-button"
+        >
+          중단
+        </button>
+      </div>
+    );
+  }
+
   if (interruptData.interrupt_type === "completion_check") {
     return (
       <div className="bg-green-50 border border-green-200 rounded-md p-3 flex flex-col gap-3" data-testid="interrupt-block">

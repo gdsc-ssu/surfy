@@ -53,7 +53,7 @@ def _make_graph():
     planner = PlannerService(llm=llm)
     actor = ActorService(browser=browser, llm=llm)
     scout = ScoutService(scout=agent_adapter)
-    evaluator = EvaluatorService(browser=browser, llm=llm)
+    evaluator = EvaluatorService(browser=browser)
     reporter = ReporterService(llm=llm)
 
     return compile_graph(
@@ -61,6 +61,7 @@ def _make_graph():
         planner=planner,
         actor=actor,
         evaluator=evaluator,
+        browser=browser,
         reporter=reporter,
         researcher=researcher,
         cache=JsonFileCacheAdapter(),
