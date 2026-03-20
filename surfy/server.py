@@ -6,6 +6,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Literal
 
 from browser_use.llm import ChatAnthropic as BrowserUseChatAnthropic
@@ -19,7 +20,7 @@ from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
 from surfy.adapters.cache import JsonFileCacheAdapter
 from surfy.adapters.llm import LangChainLLMAdapter
-from surfy.adapters.research import DdgsSearchAdapter
+from surfy.adapters.research import GeminiGroundingAdapter
 from surfy.config import Settings
 from surfy.domain.models import (
     CancelledMessage,
@@ -250,6 +251,7 @@ def _initial_state(command: str) -> AgentState:
         "done": False,
         "error": None,
         "cache_hit": False,
+        "use_cache": True,
     }
 
 
@@ -360,7 +362,9 @@ async def _get_or_create_runtime() -> ServerRuntime:
         )
 
         agent_adapter = BrowserUseAgentAdapter(session=shared_session, llm=scout_llm)
-        researcher = ResearcherService(research_port=DdgsSearchAdapter())
+        researcher = ResearcherService(
+            research_port=GeminiGroundingAdapter(api_key=google_api_key or "", model_name=settings.research.model_name)
+        )
         planner = PlannerService(llm=llm)
         actor = ActorService(browser=browser, llm=llm)
         scout = ScoutService(scout=agent_adapter)
@@ -413,6 +417,8 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
         runtime = await _get_or_create_runtime()
         config = {"configurable": {"thread_id": _SESSION.thread_id}}
 
+        prev_node_end: datetime | None = None
+
         async for event in runtime.graph.astream(input_payload, config):
             for node_name, updates in event.items():
                 if node_name == "__interrupt__":
@@ -426,7 +432,13 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
                 scout_stream_task: asyncio.Task[None] | None = None
 
                 try:
-                    await _send_message(NodeStartMessage(data=NodeStartMessageData(node=node_name)))
+                    node_start_ts = prev_node_end or datetime.now()
+                    await _send_message(
+                        NodeStartMessage(
+                            data=NodeStartMessageData(node=node_name),
+                            timestamp=node_start_ts,
+                        )
+                    )
 
                     if node_name == "scout" and runtime.scout_adapter is not None:
                         scout_stop_event = asyncio.Event()
@@ -459,7 +471,14 @@ async def _handle_graph_stream(input_payload: AgentState | Command) -> None:
                                 break
                             await asyncio.sleep(0.01)
 
-                    await _send_message(NodeEndMessage(data=NodeEndMessageData(node=node_name, updates=plain_updates)))
+                    node_end_ts = datetime.now()
+                    await _send_message(
+                        NodeEndMessage(
+                            data=NodeEndMessageData(node=node_name, updates=plain_updates),
+                            timestamp=node_end_ts,
+                        )
+                    )
+                    prev_node_end = node_end_ts
 
                     if node_name == "report" and plain_updates.get("report_result"):
                         await _send_message(ChatMessage(data=ChatMessageData(message=plain_updates["report_result"])))
@@ -517,7 +536,7 @@ async def _clear_session() -> None:
     await _send_message(ConnectedMessage(data=ConnectedMessageData(state=None, running=False)))
 
 
-async def _start_run(command: str) -> None:
+async def _start_run(command: str, use_cache: bool = True) -> None:
     if _SESSION.graph_task is not None and not _SESSION.graph_task.done():
         if not _is_browser_alive():
             logger.warning("Graph task running but browser dead — force cancelling")
@@ -528,11 +547,13 @@ async def _start_run(command: str) -> None:
             return
 
     _SESSION.thread_id = _new_thread_id()
-    _SESSION.current_state = _to_plain(_initial_state(command))
+    initial = _initial_state(command)
+    initial["use_cache"] = use_cache
+    _SESSION.current_state = _to_plain(initial)
     _SESSION.chat_queue.clear()
     _SESSION.pending_interrupt = None
     _ensure_asyncio_create_task_compat()
-    _SESSION.graph_task = asyncio.create_task(_handle_graph_stream(_initial_state(command)))
+    _SESSION.graph_task = asyncio.create_task(_handle_graph_stream(initial))
 
 
 async def _start_resume(value: dict[str, Any]) -> None:
@@ -604,7 +625,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
             if isinstance(message, RunMessage):
                 async with _SESSION.lock:
-                    await _start_run(message.data.command)
+                    await _start_run(message.data.command, use_cache=message.data.use_cache)
             elif isinstance(message, ResumeMessage):
                 async with _SESSION.lock:
                     await _start_resume(message.data.value.model_dump())
