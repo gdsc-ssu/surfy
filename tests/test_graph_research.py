@@ -609,6 +609,7 @@ async def test_auth_resume_clears_stale_state_and_retries_task():
 
     actor = MagicMock()
     actor.execute_task = AsyncMock(side_effect=actor_side_effect)
+    actor._browser.get_page_state = AsyncMock(return_value=success_page)
 
     evaluator = MagicMock()
     evaluator.evaluate = AsyncMock(
