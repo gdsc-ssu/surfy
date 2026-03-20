@@ -351,6 +351,8 @@ def compile_graph(
         )
         if not result.get("approved"):
             return {"done": True}
+        if is_auth and browser is None:
+            logger.warning("browser port not provided — skipping login detection")
         if is_auth and browser is not None:
             page_before = state.get("last_page_state")
             page_after = await browser.get_page_state()
@@ -358,7 +360,7 @@ def compile_graph(
             login_completed = (
                 page_before is None
                 or page_before.url != page_after.url
-                or page_before.dom_text[:300] != page_after.dom_text[:300]
+                or page_before.dom_text[:500] != page_after.dom_text[:500]
             )
 
             if not login_completed:
