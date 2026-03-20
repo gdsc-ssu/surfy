@@ -186,9 +186,7 @@ class LangChainLLMAdapter(LLMPort):
         template_str = self._report_template.replace("{{", "${").replace("}}", "}")
         template = Template(template_str)
 
-        formatted_results = "\n".join(
-            f"- 태스크: {r['description']}\n  결과: {r['result']}" for r in task_results
-        )
+        formatted_results = "\n".join(f"- 태스크: {r['description']}\n  결과: {r['result']}" for r in task_results)
 
         prompt = template.safe_substitute(
             command=command,

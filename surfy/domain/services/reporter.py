@@ -10,10 +10,7 @@ class ReporterService:
 
     async def report(self, command: str, completed_tasks: list[Task]) -> str:
         """완료된 태스크들을 기반으로 최종 리포트를 생성한다."""
-        task_results = [
-            {"description": t.description, "result": t.result or "결과 없음"}
-            for t in completed_tasks
-        ]
+        task_results = [{"description": t.description, "result": t.result or "결과 없음"} for t in completed_tasks]
         try:
             return await self._llm.generate_report(command, task_results)
         except Exception:

@@ -26,10 +26,10 @@ async def test_decide_action_truncates_dom_text() -> None:
 
     # Mock _actor_model.ainvoke
     mock_model = MagicMock()
-    
+
     async def mock_ainvoke(*_):
         return MagicMock()
-        
+
     mock_model.ainvoke = MagicMock(side_effect=mock_ainvoke)
     adapter._model = MagicMock()
     adapter._model.with_structured_output = MagicMock(return_value=mock_model)

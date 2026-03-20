@@ -105,9 +105,7 @@ async def test_scout_completed_skips_planner():
 
     scout = MagicMock()
     scout.scout = AsyncMock(
-        return_value=RouteMap(
-            steps=[], final_url="https://example.com", scout_summary="완료", scout_completed=True
-        )
+        return_value=RouteMap(steps=[], final_url="https://example.com", scout_summary="완료", scout_completed=True)
     )
 
     planner = MagicMock()
@@ -416,9 +414,7 @@ async def test_eval_failure_replan_passes_completed_tasks_to_planner():
     task_b = Task(description="태스크 B", success_criteria=SuccessCriteria(text_visible="B 완료"))
 
     initial_plan = Plan(anchor="목표", anchor_rationale="이유", tasks=[task_a, task_b])
-    replanned = Plan(
-        anchor="목표", anchor_rationale="재계획", tasks=[Task(description="태스크 B 재시도")]
-    )
+    replanned = Plan(anchor="목표", anchor_rationale="재계획", tasks=[Task(description="태스크 B 재시도")])
 
     planner = MagicMock()
     planner.create_plan = AsyncMock(return_value=initial_plan)
@@ -507,8 +503,13 @@ async def test_auth_required_routes_to_human_gateway_immediately():
     evaluator.evaluate = AsyncMock(return_value=EvalResult(success=False, reason="인증 페이지"))
 
     graph = compile_graph(
-        scout=scout, planner=planner, actor=actor, evaluator=evaluator,
-        researcher=researcher, checkpointer=MemorySaver(), handoff_on_auth=True,
+        scout=scout,
+        planner=planner,
+        actor=actor,
+        evaluator=evaluator,
+        researcher=researcher,
+        checkpointer=MemorySaver(),
+        handoff_on_auth=True,
     )
 
     config = cast(RunnableConfig, {"configurable": {"thread_id": "auth_handoff_immediate"}})
@@ -540,11 +541,13 @@ async def test_auth_handoff_disabled_falls_through_to_retry():
 
     page_state = PageState(url="https://gov.kr/auth", title="본인인증", dom_text="인증 필요")
     initial_plan = Plan(
-        anchor="등본 발급", anchor_rationale="발급 흐름",
+        anchor="등본 발급",
+        anchor_rationale="발급 흐름",
         tasks=[Task(description="등본 신청", success_criteria=SuccessCriteria(text_visible="신청"))],
     )
     replanned = Plan(
-        anchor="등본 발급", anchor_rationale="재시도",
+        anchor="등본 발급",
+        anchor_rationale="재시도",
         tasks=[Task(description="다른 방법 시도")],
     )
 
@@ -562,8 +565,13 @@ async def test_auth_handoff_disabled_falls_through_to_retry():
     evaluator.evaluate = AsyncMock(return_value=EvalResult(success=False, reason="인증 페이지"))
 
     graph = compile_graph(
-        scout=scout, planner=planner, actor=actor, evaluator=evaluator,
-        researcher=researcher, checkpointer=MemorySaver(), handoff_on_auth=False,
+        scout=scout,
+        planner=planner,
+        actor=actor,
+        evaluator=evaluator,
+        researcher=researcher,
+        checkpointer=MemorySaver(),
+        handoff_on_auth=False,
     )
 
     config = cast(RunnableConfig, {"configurable": {"thread_id": "auth_handoff_disabled"}})
@@ -589,7 +597,8 @@ async def test_auth_resume_clears_stale_state_and_retries_task():
     success_page = PageState(url="https://gov.kr/done", title="신청완료", dom_text="신청 완료")
 
     initial_plan = Plan(
-        anchor="등본 발급", anchor_rationale="발급 흐름",
+        anchor="등본 발급",
+        anchor_rationale="발급 흐름",
         tasks=[Task(description="등본 신청", success_criteria=SuccessCriteria(text_visible="신청"))],
     )
 
@@ -622,8 +631,14 @@ async def test_auth_resume_clears_stale_state_and_retries_task():
     )
 
     graph = compile_graph(
-        scout=scout, planner=planner, actor=actor, evaluator=evaluator,
-        browser=browser, researcher=researcher, checkpointer=MemorySaver(), handoff_on_auth=True,
+        scout=scout,
+        planner=planner,
+        actor=actor,
+        evaluator=evaluator,
+        browser=browser,
+        researcher=researcher,
+        checkpointer=MemorySaver(),
+        handoff_on_auth=True,
     )
 
     config = cast(RunnableConfig, {"configurable": {"thread_id": "auth_resume_clear"}})
