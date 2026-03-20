@@ -71,6 +71,7 @@ export interface ServerMessage {
   type: string;
   data?: any;
   connected?: boolean;
+  timestamp?: string;
 }
 
 export interface ActivityLogEntry {
@@ -104,8 +105,8 @@ export type Action =
   | { type: "WS_STATUS"; connected: boolean }
   | { type: "CONNECTED"; state: any; running: boolean }
   | { type: "STATE_UPDATE"; data: StateUpdateData }
-  | { type: "NODE_START"; node: string }
-  | { type: "NODE_END"; node: string; updates?: any }
+  | { type: "NODE_START"; node: string; serverTimestamp?: string }
+  | { type: "NODE_END"; node: string; updates?: any; serverTimestamp?: string }
   | { type: "INTERRUPT"; data: InterruptData }
   | { type: "CANCELLED" }
   | { type: "ERROR"; message: string }

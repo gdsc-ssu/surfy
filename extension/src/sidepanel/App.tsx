@@ -7,6 +7,7 @@ import { UnifiedInput } from "./components/UnifiedInput";
 import { MessageList } from "./components/MessageList";
 
 const NODE_INFO: Record<string, { label: string; icon: string }> = {
+  cache_lookup: { label: "Cache lookup", icon: "💾" },
   research: { label: "Researching topic", icon: "🔎" },
   scout: { label: "Scouting website", icon: "🗺️" },
   planner: { label: "Creating plan", icon: "📋" },
@@ -15,10 +16,18 @@ const NODE_INFO: Record<string, { label: string; icon: string }> = {
   evaluator: { label: "Evaluating result", icon: "✅" },
   completion_check: { label: "Checking completion", icon: "🏁" },
   human_gateway: { label: "Waiting for input", icon: "💬" },
+  cache_store: { label: "Saving to cache", icon: "💾" },
+  report: { label: "Generating report", icon: "📝" },
 };
 
 function getNodeInfo(node: string) {
   return NODE_INFO[node] || { label: node, icon: "⚙️" };
+}
+
+function parseServerTimestamp(ts?: string): number {
+  if (!ts) return Date.now();
+  const parsed = new Date(ts).getTime();
+  return isNaN(parsed) ? Date.now() : parsed;
 }
 
 function formatDuration(startMs: number, endMs: number) {
@@ -32,10 +41,15 @@ function formatDuration(startMs: number, endMs: number) {
 }
 
 function buildNodeEndDetail(node: string, updates?: any): string | undefined {
+  if (node === "cache_lookup") {
+    return updates?.cache_hit ? "Cache hit ⚡" : "Cache miss";
+  }
   if (node === "research" && updates?.research_result) {
     const r = updates.research_result;
     const sourceCount = r.sources?.length || 0;
-    return sourceCount > 0 ? `${sourceCount}개 소스 발견` : "검색 완료";
+    const header = sourceCount > 0 ? `${sourceCount}개 소스 발견` : "검색 완료";
+    const summary = r.summary ? `${header}\n\n${r.summary}` : header;
+    return summary;
   }
   if (node === "planner" && updates?.plan?.anchor) {
     return `Plan: ${updates.plan.anchor}`;
@@ -142,7 +156,7 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case "NODE_START": {
       const info = getNodeInfo(action.node);
-      const timestamp = Date.now();
+      const timestamp = parseServerTimestamp(action.serverTimestamp);
       const newLog = [...state.activityLog];
       const lastIdx = newLog.length - 1;
       if (lastIdx >= 0 && newLog[lastIdx].node === "__loading") {
@@ -191,7 +205,7 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case "NODE_END": {
-      const timestamp = Date.now();
+      const timestamp = parseServerTimestamp(action.serverTimestamp);
       const detail = buildNodeEndDetail(action.node, action.updates);
       const updatedLog = state.activityLog.map((entry, idx) => {
         if (idx === state.activityLog.length - 1 && entry.status === "running") {
@@ -205,6 +219,7 @@ function reducer(state: AppState, action: Action): AppState {
         const msg = updatedMessages[i];
         if (msg.type === "activity" && msg.activityData?.status === "running") {
           const duration = formatDuration(msg.timestamp, timestamp);
+
           updatedMessages[i] = {
             ...msg,
             activityData: {
@@ -398,14 +413,26 @@ function reducer(state: AppState, action: Action): AppState {
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [autoApprove, setAutoApprove] = useState(() => localStorage.getItem("surfy_auto_approve") === "true");
+  const [useCache, setUseCache] = useState(() => localStorage.getItem("surfy_use_cache") !== "false");
 
   const autoApproveRef = useRef(autoApprove);
   useEffect(() => { autoApproveRef.current = autoApprove; }, [autoApprove]);
+
+  const useCacheRef = useRef(useCache);
+  useEffect(() => { useCacheRef.current = useCache; }, [useCache]);
 
   const toggleAutoApprove = () => {
     setAutoApprove((prev) => {
       const next = !prev;
       localStorage.setItem("surfy_auto_approve", String(next));
+      return next;
+    });
+  };
+
+  const toggleCache = () => {
+    setUseCache((prev) => {
+      const next = !prev;
+      localStorage.setItem("surfy_use_cache", String(next));
       return next;
     });
   };
@@ -425,10 +452,10 @@ export default function App() {
           dispatch({ type: "STATE_UPDATE", data: message.data });
           break;
         case "node_start":
-          dispatch({ type: "NODE_START", node: message.data?.node || "unknown" });
+          dispatch({ type: "NODE_START", node: message.data?.node || "unknown", serverTimestamp: message.timestamp });
           break;
         case "node_end":
-          dispatch({ type: "NODE_END", node: message.data?.node || "unknown", updates: message.data?.updates });
+          dispatch({ type: "NODE_END", node: message.data?.node || "unknown", updates: message.data?.updates, serverTimestamp: message.timestamp });
           break;
         case "interrupt":
           dispatch({ type: "INTERRUPT", data: message.data });
@@ -495,7 +522,7 @@ export default function App() {
     dispatch({ type: "RUN_STARTED", command });
     chrome.runtime.sendMessage({
       source: "sidepanel",
-      payload: { type: "run", data: { command } },
+      payload: { type: "run", data: { command, use_cache: useCacheRef.current } },
     });
   };
 
@@ -555,6 +582,17 @@ export default function App() {
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <h1 className="text-xl font-bold text-blue-600">Surfy</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleCache}
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              useCache
+                ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            }`}
+            title={useCache ? "Cache ON — 캐시 사용" : "Cache OFF — 항상 새로 검색"}
+          >
+            {useCache ? "💾 Cache" : "🔄 Fresh"}
+          </button>
           <button
             onClick={toggleAutoApprove}
             className={`px-2 py-1 text-xs rounded transition-colors ${
