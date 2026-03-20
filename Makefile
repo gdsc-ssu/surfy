@@ -1,4 +1,4 @@
-.PHONY: fix lint typecheck test check langfuse langfuse-stop serve stop restart chrome ext-build ext-dev
+.PHONY: fix lint typecheck test check langfuse langfuse-stop serve stop restart chrome ext-build ext-dev landing landing-build
 
 fix:
 	uv run ruff check --fix surfy/ tests/
@@ -52,3 +52,9 @@ ext-build:
 
 ext-dev:
 	cd extension && npm run dev
+
+landing:
+	cd landing-page && npm install && npm run dev
+
+landing-build:
+	cd landing-page && npm install && npm run build
