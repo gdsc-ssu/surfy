@@ -1,0 +1,13 @@
+.demo-video-wrap {
+  max-width: 800px;
+  margin: 0 auto;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.demo-video-wrap iframe {
+  width: 100%;
+  height: 100%;
+}

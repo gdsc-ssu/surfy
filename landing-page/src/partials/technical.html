@@ -1,0 +1,179 @@
+<section id="technical" class="section technical">
+  <div class="container">
+    <h2 class="section-title">Technical Decisions</h2>
+    <p class="section-sub">논문 리서치와 반복 실험을 통해 도출된 설계 결정들</p>
+
+    <!-- Decision Timeline -->
+    <div class="decision-timeline">
+
+      <!-- 1. 논문 리서치 -->
+      <div class="decision-card">
+        <div class="decision-header">
+          <div>
+            <h3>14편 이상의 논문 리서치</h3>
+            <span class="decision-badge">Research</span>
+          </div>
+        </div>
+        <p class="decision-desc">
+          웹 에이전트와 Plan Agent 관련 논문을 수집하고,</br> 프로젝트에 적용 가능한 논문으로 필터링하여 핵심 기술을 도출했습니다.
+        </p>
+        <div class="paper-grid">
+          <div class="paper-tag high">
+            <span class="paper-priority">HIGH</span>
+            WebAnchor
+            <small>Anchoring Agent Planning</small>
+          </div>
+          <div class="paper-tag high">
+            <span class="paper-priority">HIGH</span>
+            WebDART
+            <small>Dynamic Decomposition &amp; Re-planning</small>
+          </div>
+          <div class="paper-tag high">
+            <span class="paper-priority">HIGH</span>
+            HiPlan
+            <small>Hierarchical Planning</small>
+          </div>
+          <div class="paper-tag high">
+            <span class="paper-priority">HIGH</span>
+            ReAcTree
+            <small>Hierarchical Agent Trees</small>
+          </div>
+          <div class="paper-tag high">
+            <span class="paper-priority">HIGH</span>
+            Plan-and-Act
+            <small>Long-Horizon Tasks</small>
+          </div>
+          <div class="paper-tag mid">
+            <span class="paper-priority">MID</span>
+            Hierarchical Prompting
+            <small>Web Navigation</small>
+          </div>
+        </div>
+        <div class="decision-insight">
+          <strong>도출된 핵심 기술:</strong> Multi-plan sampling &amp; scoring, Rolling Wave 계획법, Plan Anchor 기반 안정화
+        </div>
+      </div>
+
+      <!-- 2. Planner + Actor(ReAct) 구조 결정 -->
+      <div class="decision-card">
+        <div class="decision-header">
+          <div>
+            <h3>Planner + Actor(ReAct) 구조 결정</h3>
+            <span class="decision-badge">Architecture</span>
+          </div>
+        </div>
+        <p class="decision-desc">
+          Planner가 추상적 태스크를 생성하고,
+          Actor가 ReAct 루프로 직접 행동을 결정하는 구조입니다.
+        </p>
+        <div class="decision-split">
+          <div class="decision-split-item">
+            <h4>Planner</h4>
+            <ul>
+              <li>Plan Anchor로 첫 계획 품질 보장</li>
+              <li>Rolling Wave: 다음 1~2개 태스크만 생성</li>
+              <li>상황 변화 시 기존 계획을 수정(Replanning)</li>
+              <li>각 태스크에 담당자(Agent/Human) 지정</li>
+            </ul>
+          </div>
+          <div class="decision-split-item">
+            <h4>Actor (ReAct Loop)</h4>
+            <ul>
+              <li>단일 태스크를 받아 ReAct 루프로 직접 행동 결정</li>
+              <li>매 스텝 DOM + Screenshot 분석</li>
+              <li>별도 Micro Planner 없이 Actor가 즉시 행동 선택</li>
+              <li>예외 발생 시 Planner에 재계획 요청</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. CDP 선택 -->
+      <div class="decision-card">
+        <div class="decision-header">
+          <div>
+            <h3>CDP 기반 사용자 브라우저 직접 제어</h3>
+            <span class="decision-badge">Experiment</span>
+          </div>
+        </div>
+        <p class="decision-desc">
+          사용자의 실제 Chrome을 CDP(Chrome DevTools Protocol)로 제어하기로 결정했습니다.
+          코레일 예매 테스트에서 자동화 도구들이 개발자 도구 탐지에 실패한 경험이 근거가 되었습니다.
+        </p>
+        <div class="trial-error">
+          <div class="trial-item fail">
+            <span class="trial-icon">✗</span>
+            <div>
+              <strong>Selenium-stealth</strong>
+              <small>개발자 도구 탐지 당함</small>
+            </div>
+          </div>
+          <div class="trial-item fail">
+            <span class="trial-icon">✗</span>
+            <div>
+              <strong>Playwright / Stealth</strong>
+              <small>개발자 도구 탐지 당함</small>
+            </div>
+          </div>
+          <div class="trial-item success">
+            <span class="trial-icon">✓</span>
+            <div>
+              <strong>CDP (사용자 Chrome)</strong>
+              <small>탐지 우회 — 실제 브라우저이므로 차단 없음</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Evaluator 설계 -->
+      <div class="decision-card">
+        <div class="decision-header">
+          <div>
+            <h3>Strict Validator (Evaluator) 도입</h3>
+            <span class="decision-badge">Architecture</span>
+          </div>
+        </div>
+        <p class="decision-desc">
+          Actor의 행동 결과를 객관적으로 평가하는 독립된 검증 노드를 설계했습니다.</br>
+          다음 행동을 절대 스스로 계획하지 않고, 성공 여부(True/False)와 사유만 판단합니다.
+        </p>
+        <div class="decision-insight">
+          <strong>핵심 원칙:</strong> 화면 상태(DOM/스크린샷)와 Planner가 설정한 '기대 결과'를 대조 →
+          검증 통과 시 다음 태스크, 실패 시 재시도, 반복 실패 시 Human Gateway를 통해 사용자 개입 요청
+        </div>
+      </div>
+
+      <!-- 5. Scout Gemini Flash 최적화 -->
+      <div class="decision-card">
+        <div class="decision-header">
+          <div>
+            <h3>Scout 단계 Gemini Flash 최적화</h3>
+            <span class="decision-badge">Optimization</span>
+          </div>
+        </div>
+        <p class="decision-desc">
+          Scout 단계에 Gemini Flash를 도입하여 사이트 탐색 속도를 대폭 개선했습니다. (PR #43)
+        </p>
+        <div class="benchmark-grid">
+          <div class="benchmark-item">
+            <div class="benchmark-label">Scout 단계 소요 시간</div>
+            <div class="benchmark-bars">
+              <div class="benchmark-bar">
+                <span class="bar-label">기존</span>
+                <div class="bar-track"><div class="bar-fill before" style="width:100%"></div></div>
+                <span class="bar-value">56초</span>
+              </div>
+              <div class="benchmark-bar">
+                <span class="bar-label">Gemini</span>
+                <div class="bar-track"><div class="bar-fill after" style="width:18%"></div></div>
+                <span class="bar-value">10초</span>
+              </div>
+            </div>
+            <div class="benchmark-note">82% 단축 — Gemini Flash 도입으로 Scout 단계만 5.6배 빨라짐</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>

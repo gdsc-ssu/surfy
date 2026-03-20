@@ -23,6 +23,9 @@ build/
 !.claude/settings.json
 !.claude/skills/
 
+# Node
+node_modules/
+
 # Generated artifacts
 graph.png
 

@@ -1,0 +1,123 @@
+@media (max-width: 1024px) {
+  .agents-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .workflow-timeline {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 64px;
+    left: 0;
+    right: 0;
+    background: var(--bg-white);
+    flex-direction: column;
+    padding: 20px 24px;
+    gap: 16px;
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
+  }
+
+  .nav-links.open {
+    display: flex;
+  }
+
+  .nav-cta {
+    display: none;
+  }
+
+  .nav-toggle {
+    display: flex;
+  }
+
+  .hero-title {
+    font-size: 2rem;
+  }
+
+  .hero-quote {
+    font-size: 1.15rem;
+  }
+
+  .section-title {
+    font-size: 1.75rem;
+  }
+
+  .steps-grid {
+    flex-direction: column;
+  }
+
+  .step-connector {
+    transform: rotate(90deg);
+  }
+
+  .step-card {
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .comparison {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .comparison-vs {
+    transform: rotate(90deg);
+  }
+
+  .agents-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .arch-flow {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .arch-arrow {
+    transform: rotate(90deg);
+  }
+
+  .workflow-timeline {
+    grid-template-columns: 1fr;
+  }
+
+  .stack-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sequence-diagrams {
+    grid-template-columns: 1fr;
+  }
+
+  .team-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .hero-actions {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-title {
+    font-size: 1.6rem;
+  }
+
+  .hero-desc {
+    font-size: 1rem;
+  }
+
+  .section {
+    padding: 72px 0;
+  }
+
+  .agents-grid {
+    grid-template-columns: 1fr;
+  }
+}

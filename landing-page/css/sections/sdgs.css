@@ -1,0 +1,43 @@
+.sdgs-grid {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.sdg-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px 36px;
+  min-width: 320px;
+  transition: var(--transition);
+  box-shadow: var(--shadow-sm);
+}
+
+.sdg-card:hover {
+}
+
+.sdg-image {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.sdg-info h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.sdg-info p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
