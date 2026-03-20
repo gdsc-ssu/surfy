@@ -84,7 +84,7 @@ def compile_graph(
         return ":".join(p.lower() for p in parts)
 
     async def cache_lookup_node(state: AgentState) -> dict[str, object]:
-        if cache is None:
+        if cache is None or not state.get("use_cache", True):
             return {"cache_hit": False}
         key = await _cache_key(state["command"])
         scenario = cache.get(key)
@@ -102,21 +102,24 @@ def compile_graph(
         }
 
     async def cache_store_node(state: AgentState) -> dict[str, object]:
-        if cache is None or state.get("cache_hit", False):
+        if cache is None or state.get("cache_hit", False) or not state.get("use_cache", True):
             return {}
         route_map = state.get("route_map")
         plan = state.get("plan")
-        if route_map is None or plan is None:
+        if route_map is None and plan is None:
             return {}
         from surfy.domain.models.cache import CachedScenario
+
         command = state["command"]
         key = await _cache_key(command)
-        cache.set(CachedScenario(
-            cache_key=key,
-            command_normalized=command.lower().strip(),
-            route_map=route_map,
-            plan=plan,
-        ))
+        cache.set(
+            CachedScenario(
+                cache_key=key,
+                command_normalized=command.lower().strip(),
+                route_map=route_map,
+                plan=plan,
+            )
+        )
         return {}
 
     async def research_node(state: AgentState) -> dict[str, object]:
@@ -258,9 +261,7 @@ def compile_graph(
 
         post_auth = state.get("post_auth", False)
         initial_memory = (
-            "[인증 완료] 사용자가 인증/로그인을 완료했습니다. 인증 이후 단계를 계속 진행하세요."
-            if post_auth
-            else ""
+            "[인증 완료] 사용자가 인증/로그인을 완료했습니다. 인증 이후 단계를 계속 진행하세요." if post_auth else ""
         )
         result = await actor.execute_task(task, initial_memory=initial_memory)
         action_type = ActionType.DONE if result.success else ActionType.STUCK
@@ -417,9 +418,9 @@ def compile_graph(
             logger.warning("Report generation failed: %s", e)
             return {"report_result": None}
 
-    def route_after_scout(state: AgentState) -> Literal["planner", "report"]:
+    def route_after_scout(state: AgentState) -> Literal["planner", "cache_store"]:
         if state.get("done", False):
-            return "report"
+            return "cache_store"
         return "planner"
 
     def route_after_planner(state: AgentState) -> Literal["plan_approval", "actor", "cache_store", "END"]:
@@ -498,7 +499,7 @@ def compile_graph(
         route_after_scout,
         {
             "planner": "planner",
-            "report": "report",
+            "cache_store": "cache_store",
         },
     )
 

@@ -20,6 +20,7 @@ class BaseMessage(BaseModel):
 class RunMessageData(BaseModel):
     command: str
     thread_id: str | None = None
+    use_cache: bool = True
 
 
 class RunMessage(BaseMessage):
@@ -198,8 +199,7 @@ class ConnectedMessage(BaseMessage):
 
 
 ClientMessage = (
-    RunMessage | ResumeMessage | ChatMessage | CancelMessage
-    | HeartbeatMessage | GetStatusMessage | ClearMessage
+    RunMessage | ResumeMessage | ChatMessage | CancelMessage | HeartbeatMessage | GetStatusMessage | ClearMessage
 )
 
 

@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { ChatMessage } from "../types";
 
 interface ActivityBlockProps {
@@ -43,7 +45,11 @@ export const ActivityBlock: React.FC<ActivityBlockProps> = ({ activityData }) =>
 
       {expanded && (
         <div className="ml-6 flex flex-col gap-1">
-          {activityData.detail && <p className="text-xs text-gray-600 break-words">{activityData.detail}</p>}
+          {activityData.detail && (
+            <div className="text-xs text-gray-600 prose prose-xs prose-gray max-w-none overflow-x-auto [&_table]:w-full [&_table]:text-xs [&_th]:bg-gray-100 [&_th]:px-2 [&_th]:py-1 [&_td]:px-2 [&_td]:py-1 [&_td]:border-t [&_td]:border-gray-200 [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h2]:text-sm [&_h2]:mt-2 [&_h2]:mb-1 [&_h3]:text-xs [&_h3]:mt-2 [&_h3]:mb-1">
+              <Markdown remarkPlugins={[remarkGfm]}>{activityData.detail}</Markdown>
+            </div>
+          )}
           {activityData.subSteps && activityData.subSteps.length > 0 && (
             <div className="flex flex-col gap-0.5 mt-0.5">
               {activityData.subSteps.map((step, index) => (

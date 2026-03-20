@@ -1,3 +1,3 @@
-from surfy.adapters.research.ddgs_search import DdgsSearchAdapter
+from surfy.adapters.research.gemini_grounding import GeminiGroundingAdapter
 
-__all__ = ["DdgsSearchAdapter"]
+__all__ = ["GeminiGroundingAdapter"]

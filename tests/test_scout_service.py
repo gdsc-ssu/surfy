@@ -88,4 +88,6 @@ async def test_scout_with_research_result_includes_urls_in_task(mock_scout):
     assert mock_scout.last_task is not None
     assert "https://a.com" in mock_scout.last_task
     assert "https://b.com" in mock_scout.last_task
-    assert "참고 URL:" in mock_scout.last_task
+    assert "출처 URL" in mock_scout.last_task
+    assert "사전 조사 요약" in mock_scout.last_task
+    assert "Research summary" in mock_scout.last_task

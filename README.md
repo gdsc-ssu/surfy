@@ -146,7 +146,7 @@ surfy/
 ├── adapters/
 │   ├── browser/     # browser-use 래핑
 │   ├── llm/         # langchain-anthropic 래핑
-│   └── research/    # DdgsSearchAdapter
+│   └── research/    # GeminiGroundingAdapter
 ├── graph.py         # LangGraph 상태머신 (interrupt 기반 HITL)
 ├── state.py         # AgentState (user_feedback 포함)
 ├── server.py        # FastAPI WebSocket 서버

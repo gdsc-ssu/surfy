@@ -37,9 +37,7 @@ class ActorService:
 
             if len(fingerprints) >= 5 and len(set(fingerprints[-5:])) == 1:
                 logger.warning("Loop detected: 5 identical page states. Forcing STUCK.")
-                return StepResult(
-                    success=False, message="Loop detected: stuck on same page", page_state=page_state
-                )
+                return StepResult(success=False, message="Loop detected: stuck on same page", page_state=page_state)
 
             nudge = ""
             if len(fingerprints) >= 3 and len(set(fingerprints[-3:])) == 1:

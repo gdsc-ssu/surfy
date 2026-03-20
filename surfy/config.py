@@ -27,6 +27,12 @@ class ScoutSettings(BaseSettings):
     max_steps: int = 15
 
 
+class ResearchSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="RESEARCH_", env_file=".env", extra="ignore")
+
+    model_name: str = "gemini-2.0-flash"
+
+
 class LangfuseSettings(BaseSettings):
     """Langfuse 관측성 설정. 환경변수가 설정되어 있으면 자동 활성화."""
 
@@ -52,4 +58,5 @@ class Settings(BaseSettings):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     browser: BrowserSettings = Field(default_factory=BrowserSettings)
     scout: ScoutSettings = Field(default_factory=ScoutSettings)
+    research: ResearchSettings = Field(default_factory=ResearchSettings)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)

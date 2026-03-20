@@ -29,5 +29,5 @@ class CachedScenario(BaseModel):
     command_normalized: str
     """캐시 키 생성에 사용된 정규화된 명령어 (디버그용)."""
 
-    route_map: RouteMap
-    plan: Plan
+    route_map: RouteMap | None = None
+    plan: Plan | None = None

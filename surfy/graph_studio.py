@@ -9,6 +9,7 @@ langgraph.json의 "graphs.surfy" 에서 참조됨.
 """
 
 import logging
+import os
 
 from browser_use import BrowserSession
 from browser_use.llm import ChatAnthropic as BrowserUseChatAnthropic
@@ -18,7 +19,7 @@ from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
 from surfy.adapters.cache import JsonFileCacheAdapter
 from surfy.adapters.llm import LangChainLLMAdapter
-from surfy.adapters.research import DdgsSearchAdapter
+from surfy.adapters.research import GeminiGroundingAdapter
 from surfy.domain.services import (
     ActorService,
     EvaluatorService,
@@ -48,7 +49,11 @@ def _make_graph():
     agent_llm = BrowserUseChatAnthropic(model="claude-sonnet-4-20250514")
 
     agent_adapter = BrowserUseAgentAdapter(session=agent_session, llm=agent_llm)
-    researcher = ResearcherService(research_port=DdgsSearchAdapter())
+    researcher = ResearcherService(
+        research_port=GeminiGroundingAdapter(
+            api_key=os.environ.get("GOOGLE_API_KEY", ""), model_name="gemini-2.0-flash"
+        )
+    )
 
     planner = PlannerService(llm=llm)
     actor = ActorService(browser=browser, llm=llm)

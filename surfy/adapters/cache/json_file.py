@@ -39,11 +39,7 @@ class JsonFileCacheAdapter(CachePort):
                 except Exception:
                     data = {}
             data[scenario.cache_key] = scenario.model_dump()
-            self._path.write_text(
-                json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            logger.info(
-                "Cache stored: key=%s command=%s", scenario.cache_key, scenario.command_normalized
-            )
+            self._path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            logger.info("Cache stored: key=%s command=%s", scenario.cache_key, scenario.command_normalized)
         except Exception as e:
             logger.warning("Cache write failed: %s", e)

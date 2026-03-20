@@ -33,6 +33,7 @@ from surfy.domain.services import ActorService
 # =====================================================# Mock 테스트 - API 없이 ReAct 루프 로직 검증
 # =====================================================
 
+
 class MockBrowser(BrowserPort):
     def __init__(self):
         self.step = 0
@@ -101,7 +102,9 @@ class MockLLM(LLMPort):
 
     async def extract_intent(self, command: str):
         from surfy.domain.models.cache import CommandIntent
+
         return CommandIntent(service="unknown", action="navigate")
+
     async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
         return f"Report for {command}"
 

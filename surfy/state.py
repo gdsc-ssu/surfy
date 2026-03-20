@@ -26,3 +26,4 @@ class AgentState(TypedDict):
     done: bool
     error: str | None
     cache_hit: bool
+    use_cache: bool

@@ -56,7 +56,7 @@ def do_task(command):
 |                                             |
 |  llm/      -> Claude, Gemini 연결           |
 |  browser/  -> Chrome 브라우저 연결            |
-|  research/ -> 웹 검색 엔진 연결              |
+|  research/ -> 웹 검색 엔진 연결 (Gemini Grounding) |
 |                                             |
 |      domain/ports의 ABC를 구현함             |
 +---------------------------------------------+
@@ -368,7 +368,9 @@ def route_after_evaluator(state):
 # 1. 어댑터 생성 — 실제 외부 시스템 연결
 browser = await BrowserUseAdapter.create(...)
 llm = LangChainLLMAdapter(model=chat_model, ...)
-researcher = ResearcherService(research_port=DdgsSearchAdapter())
+researcher = ResearcherService(
+    research_port=GeminiGroundingAdapter(api_key=..., model_name=...)
+)
 
 # 2. 서비스 생성 — 어댑터를 Port 타입으로 주입
 planner = PlannerService(llm=llm)                # llm: LLMPort
@@ -430,7 +432,7 @@ surfy/
 ├── adapters/
 │   ├── browser/     # BrowserPort 구현 (browser-use)
 │   ├── llm/         # LLMPort 구현 (langchain)
-│   └── research/    # ResearchPort 구현 (DuckDuckGo)
+│   └── research/    # ResearchPort 구현 (Gemini Grounding)
 ├── graph.py         # LangGraph 상태 머신 정의
 ├── state.py         # AgentState TypedDict
 ├── server.py        # FastAPI WebSocket 서버

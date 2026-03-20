@@ -13,7 +13,7 @@ from surfy.adapters.browser import BrowserUseAdapter
 from surfy.adapters.browser.agent_adapter import BrowserUseAgentAdapter
 from surfy.adapters.cache import JsonFileCacheAdapter
 from surfy.adapters.llm import LangChainLLMAdapter
-from surfy.adapters.research import DdgsSearchAdapter
+from surfy.adapters.research import GeminiGroundingAdapter
 from surfy.config import Settings
 from surfy.domain.services import ActorService, EvaluatorService, PlannerService, ResearcherService, ScoutService
 from surfy.graph import compile_graph
@@ -67,7 +67,11 @@ async def run(command: str) -> AgentState:
     )
 
     agent_adapter = BrowserUseAgentAdapter(session=shared_session, llm=agent_llm)
-    researcher = ResearcherService(research_port=DdgsSearchAdapter())
+    researcher = ResearcherService(
+        research_port=GeminiGroundingAdapter(
+            api_key=google_api_key or "", model_name=settings.research.model_name
+        )
+    )
 
     planner = PlannerService(llm=llm)
     actor = ActorService(browser=browser, llm=llm)

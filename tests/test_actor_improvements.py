@@ -72,7 +72,9 @@ class MockLLM(LLMPort):
 
     async def extract_intent(self, command: str):
         from surfy.domain.models.cache import CommandIntent
+
         return CommandIntent(service="unknown", action="navigate")
+
     async def generate_report(self, command: str, task_results: list[dict[str, str]]) -> str:
         return f"Report for {command}"
 
